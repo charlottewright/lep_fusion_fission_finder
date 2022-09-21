@@ -4,7 +4,9 @@ A tool to assign ancestral linkage units and/or identify fusion/fission events i
 ### Running the script
 `fusion_split_finder.py` takes the full_table.tsv output file for two species, along with an optional prefix (specified with -f, default "fsf"). The default window size for lepidoptera is 17 BUSCOs but this can be changed with the `-w` flag e.g.:
 
-`python3 fusion_split_finder.py -q test_data/Aglais_io_full_table.tsv -r test_data/Melitaea_cinxia_full_table.tsv -f Aglais-w 17`
+```
+python3 fusion_split_finder.py -q test_data/Aglais_io_full_table.tsv -r test_data/Melitaea_cinxia_full_table.tsv -f Aglais-w 17`
+```
 
 ### The output
 This will write two files:
