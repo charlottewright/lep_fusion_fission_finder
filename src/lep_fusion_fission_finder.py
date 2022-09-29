@@ -166,3 +166,4 @@ if __name__ == "__main__":
 	if len(warnings_list) > 0:
 		print("\t[+] Writing " + str(len(warnings_list)) + " warnings to " + prefix + "_warnings.txt")
 		write_warnings(warnings_list)
+
