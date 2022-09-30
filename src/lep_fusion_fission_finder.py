@@ -2,22 +2,6 @@
 import sys
 import argparse
 
-def parse_query_table(query_table_file):
-	with open(query_table_file, 'r') as query_table:
-		chr2pos, pos2buscoID = {}, {} 
-		for line in query_table:
-			if not line.startswith("#"): # ignoring comments at top
-				cols = line.rstrip("\n").split() # get columns
-				if cols[1] == "Complete":
-					buscoID, chr, start, end = cols[0], cols[2].split(":")[0], int(cols[3]), int(cols[4])
-					pos = (start + end)/2 # get midpoint coordinate of busco (position)
-					try: 
-						chr2pos[chr].append(pos) # try and add the position to the list of BUSCO positions on that chromosome
-					except KeyError: 
-						chr2pos[chr] = [pos] # or create a new list if chromosome hasn't be seen yet
-					pos2buscoID[str(pos) + "_" + chr] = buscoID # key = position_chr, value = buscoID
-	return chr2pos, pos2buscoID
-
 def parse_reference_table(reference_table_file):
 	with open(reference_table_file, 'r') as reference_table: 
 		buscoID2merian = {} 
@@ -28,6 +12,24 @@ def parse_reference_table(reference_table_file):
 					buscoID, merian = cols[0], cols[2].split(":")[0]
 					buscoID2merian[buscoID] = merian # key = buscoID, value = Merian
 	return buscoID2merian
+
+def parse_query_table(query_table_file, buscoID2merian):
+	with open(query_table_file, 'r') as query_table:
+		chr2pos, pos2buscoID = {}, {} 
+		for line in query_table:
+			if not line.startswith("#"): # ignoring comments at top
+				cols = line.rstrip("\n").split() # get columns
+				if cols[1] == "Complete":
+					buscoID, chr, start, end = cols[0], cols[2].split(":")[0], int(cols[3]), int(cols[4])
+					pos = (start + end)/2 # get midpoint coordinate of busco (position)
+					if buscoID in buscoID2merian: # only get BUSCOs that are in the assignment table (i.e. filter out 'unassigned')
+						try: 
+							chr2pos[chr].append(pos) # try and add the position to the list of BUSCO positions on that chromosome
+						except KeyError: 
+							chr2pos[chr] = [pos] # or create a new list if chromosome hasn't be seen yet
+						pos2buscoID[str(pos) + "_" + chr] = buscoID # key = position_chr, value = buscoID
+	return chr2pos, pos2buscoID
+
 
 def get_max_merians(chr2pos, pos2buscoID, window_size, warnings_list):
 	max_merian_dict = {}
@@ -155,8 +157,8 @@ if __name__ == "__main__":
 	print("[+] Running fusion_split_finder2.py with a window size of " + str(window_size))
 	# run fuctions
 	print("\t[+] Parsing full table files")
-	chr2pos, pos2buscoID = parse_query_table(query_table_file)
 	buscoID2merian = parse_reference_table(reference_table_file)
+	chr2pos, pos2buscoID = parse_query_table(query_table_file, buscoID2merian)
 	print("\t[+] Finding most common Merian in each window")
 	max_merian_dict, warnings_list = get_max_merians(chr2pos, pos2buscoID, window_size, warnings_list)
 	print("\t[+] Writing assignments to " + prefix + "_chromosome_assignments.txt")
@@ -166,4 +168,3 @@ if __name__ == "__main__":
 	if len(warnings_list) > 0:
 		print("\t[+] Writing " + str(len(warnings_list)) + " warnings to " + prefix + "_warnings.txt")
 		write_warnings(warnings_list)
-
