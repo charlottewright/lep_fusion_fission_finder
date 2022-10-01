@@ -9,27 +9,25 @@ import sys
 from ete3 import Tree, TreeStyle, AttrFace, faces
 import re
 from pathlib import Path
-#conda install -c conda-forge biopython
 import argparse
-
-
-parser = argparse.ArgumentParser(description='This maps each fusion and split event onto the phylogeny')
-parser.add_argument("--output", help="This is the location for the output file")
-parser.add_argument("--prefix", help="This is the prefix to all files")
-
-args = parser.parse_args()
-
-output_location = args.output
-prefix = args.prefix
-
 #%%
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-# GET LIST OF FUSIONS READY
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#df_combined = pd.read_csv('results/Overall_fusions.tsv', sep=',')
-#print(df_combined)
+#parser = argparse.ArgumentParser(description='This maps each fusion and split event onto the phylogeny')
+#parser.add_argument("--output", help="This is the location for the output file")
+#parser.add_argument("--prefix", help="This is the prefix to all files")
 
-def parse_info(path):
+#args = parser.parse_args()
+
+#output_location = args.output
+#prefix = args.prefix
+#%%
+### Define variables ###
+prefix = 'test1'
+output = '/lustre/scratch123/tol/teams/blaxter/projects/lepidoptera_genomics/cw22/Leps_200/Software/lep_fusion_fission_finder/src/'
+#PATH= "/lustre/scratch123/tol/teams/blaxter/projects/lepidoptera_genomics/cw22/Datafreeze_080621/Analysis/Features/Ancestral_assignments/lep_fusion_split_finder_v2/spp_files/"
+PATH = '.'
+#%%
+### Define functions ###
+def parse_info(path):  # get list of fusions ready
         file_list = []
         for filename in Path(path).glob('*.tsv'):
                 file_list.append(str(filename))
@@ -38,9 +36,10 @@ def parse_info(path):
 def is_non_zero_file(fpath):
         return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 
-PATH= "/lustre/scratch116/tol/teams/team301/projects/lepidoptera_genomics/cw22/Datafreeze_080621/Analysis/Features/Ancestral_assignments/lep_fusion_split_finder_v2/"
+#%%
+### Run functions ###
 file_list = parse_info(PATH)
-
+print(file_list)
 #%%
 # Gather stats
 max_number_fused_chrs = 0
@@ -57,9 +56,11 @@ for FILE in file_list:
                 file = pd.read_csv(FILE, sep='\t', index_col = False)
 #               print(file)
                 # Header = "query_chr", "status", "assigned_ref_chr"
-                Spp_name = FILE.split('/')
-                Spp_name = Spp_name[14]
+               # Spp_name = FILE.split('/')
+         #       Spp_name = Spp_name[1] # edit depending on file path
+                Spp_name = FILE		 
                 Spp_name = Spp_name.split('_')
+                print(Spp_name)
                 Genus = Spp_name[0]
                 Species = Spp_name[1]
                 Full_name = Genus + '_' + Species
@@ -82,7 +83,9 @@ for FILE in file_list:
                         d.append(entry)
 
 df_combined = pd.DataFrame(d)
-
+#%%
+df_combined.head()
+#%%
 List_unique_fusions = []
 List_unique_splits = []
 
