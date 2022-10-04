@@ -1,17 +1,15 @@
 #!/usr/bin/python
 #%%
 # Code taken from Map_fusion_splits_v2.6.py (dated 27/8/21) on 1/10/22 
-
 import os, sys, glob, argparse, re
 import pandas as pd
 from ete3 import Tree, TreeStyle, AttrFace, faces
 from pathlib import Path
 #%%
 ### Define functions ###
-def parse_info(input_path):  # get list of fusions ready
+def parse_info(input_data):  # get list of fusions ready
 	file_list = []
-	print(input_path)
-	for filename in Path(input_path).glob('*.tsv'):
+	for filename in Path(input_data).glob('*.tsv'):
 		file_list.append(str(filename))
 	return file_list
 
@@ -19,39 +17,35 @@ def is_non_zero_file(fpath):
         return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 
 def gather_stats_and_make_table(file_list):
-	max_number_fused_chrs = 0
-	total_number_fusions = 0
-	total_number_splits = 0
-	chr_list = []
-	d = []
-	for FILE in file_list:
-			result = is_non_zero_file(FILE)
-			if str(result) == "True":
-					file = pd.read_csv(FILE, sep='\t', index_col = False) # Header = "query_chr", "status", "assigned_ref_chr"
-				# Spp_name = FILE.split('/')
-				# Spp_name = Spp_name[1] # edit depending on file path
-					Spp_name = FILE		 
-					Spp_name = Spp_name.split('_')
-					Genus = Spp_name[0]
-					Species = Spp_name[1]
-					Full_name = Genus + '_' + Species
-					chr_list = []
-					for value in file.query_chr:
-							chr_list.append(value)
-					for QUERY in chr_list:
-							filtered_data = file[file['query_chr'] == QUERY]
-							STATUS = str(filtered_data.iloc[0].status[::])
-							ASSIGNED = str(filtered_data.iloc[0].assigned_ref_chr[::])
-							List_of_fusions = ASSIGNED.split(',')
-							List_of_fusions = sorted(List_of_fusions)
-							if len(List_of_fusions) > max_number_fused_chrs:
-									max_number_fused_chrs = len(List_of_fusions)
-							if STATUS == "fusion":
-									total_number_fusions = total_number_fusions + 1
-							if STATUS == "split":
-									total_number_splits = total_number_splits + 1
-							entry = {'Chrom_ID':QUERY, 'Status':STATUS, 'Assigned_ref_chr':ASSIGNED, 'Spp':Full_name }
-							d.append(entry)
+	max_number_fused_chrs, total_number_fusions, total_number_splits = 0, 0, 0
+	chr_list, d = [], []
+	for file_name in file_list:
+		result = is_non_zero_file(file_name)
+		if str(result) == "True":
+			file = pd.read_csv(file_name, sep='\t', index_col = False) # Header = "query_chr", "status", "assigned_ref_chr"
+			Spp_name = file_name.split('/')
+			Spp_name = Spp_name[int(input_data.count('/'))] # altered depending on file path to get just file name
+			Spp_name = Spp_name.split('_')
+			Genus = Spp_name[0]
+			Species = Spp_name[1]
+			Full_name = Genus + '_' + Species
+			chr_list = []
+			for value in file.query_chr:
+					chr_list.append(value)
+			for query_chr in chr_list:
+					filtered_data = file[file['query_chr'] == query_chr]
+					STATUS = str(filtered_data.iloc[0].status[::])
+					ASSIGNED = str(filtered_data.iloc[0].assigned_ref_chr[::])
+					List_of_fusions = ASSIGNED.split(',')
+					List_of_fusions = sorted(List_of_fusions)
+					if len(List_of_fusions) > max_number_fused_chrs:
+						max_number_fused_chrs = len(List_of_fusions)
+					if STATUS == "fusion":
+						total_number_fusions = total_number_fusions + 1
+					if STATUS == "split":
+						total_number_splits = total_number_splits + 1
+					entry = {'Chrom_ID':query_chr, 'Status':STATUS, 'Assigned_ref_chr':ASSIGNED, 'Spp':Full_name }
+					d.append(entry)
 	df_combined = pd.DataFrame(d)
 	return(df_combined)
 
@@ -76,8 +70,8 @@ def assign_spp_to_fusions(unique_combos_fusions):
 			#	print("The merians in the row are:", Merians, "The matched merians are:", matched_merians, "The total merians in the unique combo are:", value)
 				number_matched = len(matched_merians)
 				number_in_unique_combo = len(value)
-				total_number_merians = len(Merians)
-				percent_match = number_matched / total_number_merians
+			#	total_number_merians = len(Merians)
+			#	percent_match = number_matched / total_number_merians
 				if number_matched == number_in_unique_combo:
 				#if percent_match >= threshold:
 					Species = str(row['Spp'])
@@ -116,9 +110,9 @@ def search(Node, mapped_fusions_dict): # I don't think this function is ever us
 
 def map_fusions(List_unique_fusions, t, threshold):
 	mapped_fusions_dict = []
-	tracking_fusion_number_dict = [] # not currently used
+	# tracking_fusion_number_dict = [] # not currently used
 	lost_fusions_dict = []
-	nodes_with_fusions_list = {}
+	nodes_with_fusions_list = {} # use to keep track of whether a node already has a fusion assigned to it
 	for key in List_unique_fusions:
 		Fusion_event = str(key["Unique_Merian_combo"])
 		spp_list = key['spp_with_fusion']
@@ -127,8 +121,8 @@ def map_fusions(List_unique_fusions, t, threshold):
 			for leaf in node:
 				tip = leaf.name
 				tip_list.append(tip)
-	#		if all(x in spp_list for x in tip_list): # 	New code here - parametre:
-			total_spp_list = len(spp_list)
+		#	if all(x in spp_list for x in tip_list): # 	New code here - parametre:
+		#	total_spp_list = len(spp_list)
 		#		print("The spp list is:", spp_list)
 		#		print("The total number spp is:", total_spp_list)
 		#		print("The tips are:", tip_list)
@@ -148,27 +142,6 @@ def map_fusions(List_unique_fusions, t, threshold):
 				if len(spp_with_loss) != 0:
 					loss_entry = {'Merians':Fusion_event, 'Tips':spp_with_loss, 'Node':node.name}
 					lost_fusions_dict.append(loss_entry)
-					spp1 = str(spp_with_loss[0])
-					spp1 = t&spp1 # the shorcut to finding nodes by name
-					spp1.add_feature("Loss1", Fusion_event)
-				if len(spp_with_loss) == 2:
-					#loss_entry = {'Fusion':Fusion_event, 'Tips':str(spp_with_loss), 'Node':node.name}
-					#lost_fusions_dict.append(loss_entry)
-					spp1, spp2 = str(spp_with_loss[0]), str(spp_with_loss[1])
-					spp1 = t&spp1
-					spp2 = t&spp2
-					spp1.add_feature("Loss1", Fusion_event)
-					spp2.add_feature("Loss1", Fusion_event)
-				if len(spp_with_loss) == 3:
-					#loss_entry = {'Fusion':Fusion_event, 'Tips':str(spp_with_loss), 'Node':node.name}
-					#lost_fusions_dict.append(loss_entry)
-					spp1, spp2, spp3 = str(spp_with_loss[0]), str(spp_with_loss[1]), str(spp_with_loss[2])
-					spp1 = t&spp1
-					spp2 = t&spp2
-					spp3 = t&spp3
-					spp1.add_feature("Loss1", Fusion_event)
-					spp2.add_feature("Loss1", Fusion_event)
-					spp3.add_feature("Loss1", Fusion_event)
 				value = str(Fusion_event)
 				NODE = node.name
 				NODE = str(NODE)
@@ -176,8 +149,7 @@ def map_fusions(List_unique_fusions, t, threshold):
 					nodes_with_fusions_list[NODE] += 1
 					Fusion_x = nodes_with_fusions_list[NODE]
 					Fusion_x = "Fusion" + str(Fusion_x)
-					node.add_feature(Fusion_x, value)
-					# These lines are all to do with identifying if a node already has a subset of a Merian combo (e.g. M11,M2 when M11,M2,MZ is now being processed)
+				# These lines are all to do with identifying if a node already has a subset of a Merian combo (e.g. M11,M2 when M11,M2,MZ is now being processed)
 				#	Fusion_Merians = x.split(",")
 				#	Number_Merian_in_Fusion = len(Fusion_Merians)
 				#	results = search(node.name, mapped_fusions_dict)
@@ -194,8 +166,7 @@ def map_fusions(List_unique_fusions, t, threshold):
 				#		if number_dups >= 2:
 				#			if Number_Merian_in_Fusion > number_dups:
 				#				if all(x in Fusion_Merians for x in entry_list):
-							# Find out what "Fusion_x" the smaller entry is associated with
-							# By searching  tracking_fusion_number_dict for entry
+							# Find out what "Fusion_x" the smaller entry is associated with by searching  tracking_fusion_number_dict for entry
 				#					results2 = search(node.name, tracking_fusion_number_dict)
 				#					corresponding_fusion_number = [d['Fusion_x'] for d in results2 if d['Fusion'] == entry]
 				#					corresponding_fusion_number = str(corresponding_fusion_number)
@@ -209,17 +180,12 @@ def map_fusions(List_unique_fusions, t, threshold):
 									# This line added 23/8 updates the mapped_fusions_dict to remove sub-fusions
 								#	mapped_fusions_dict =  [item for item in mapped_fusions_dict if item['Node'] != node.name and item['Fusion'] != str(entry)]
 				else:
-					node.add_feature("Fusion1", value)
 					nodes_with_fusions_list[NODE] = 1
-	#				node.add_feature("Fusion_2", value)
-	#				print("THE NEW LABEL IS:", node.Fusion_1)
 				for element in matches:
 					if element in spp_list:
 						spp_list.remove(element)
 	#			print("After removing these tips, the total list now is:", spp_list)
-	# So far the max number of (sensible) fusions per node is 8
-	print(t.get_ascii(show_internal=True, attributes = ["name", 'Fusion1', "Fusion2", "Fusion3", "Fusion4", "Fusion5", "Fusion6", "Fusion7", "Fusion8", "Fusion9", "Fusion10", "Fusion11", "Fusion12", "Fusion13", "Fusion14", "Fusion15", "Fusion16", "Fusion17", "Fusion18", "Fusion19", "Fusion20", "Fusion21", "Fusion22", "Fusion23", "Fusion24", "Fusion25", "Fusion26", "Fusion27", "Fusion28", "Fusion29", "Fusion30", "Fusion31", "Fusion32", "Fusion33", "Fusion34", "Fusion35", "Fusion36", "Fusion37", "Fusion38", "Fusion39", "Fusion40", "Fusion41"]))
-	lost_fusions_df = pd.DataFrame(lost_fusions_dict) # COonvert lost fusions to dataframe
+	lost_fusions_df = pd.DataFrame(lost_fusions_dict) # Convert lost fusions to dataframe
 	return(mapped_fusions_dict, lost_fusions_df, t)
 
 def map_splits(List_unique_splits, t, threshold):
@@ -242,17 +208,13 @@ def map_splits(List_unique_splits, t, threshold):
 	#		if sorted(tip_list) == sorted(spp_list):
 	#			print("Success!")
 	#		if all(x in spp_list for x in tip_list):
-			total_spp_list = len(spp_list)
-		#		print("The spp list is:", spp_list)
-		#		print("The total number spp is:", total_spp_list)
-		#		print("The tips are:", tip_list)
+		#	print("The spp list is:", spp_list, "The total number spp is:", total_spp_list, "The tips are:", tip_list)
 			matches = set(spp_list)&set(tip_list)
 			spp_with_loss = [d for d in tip_list if d not in spp_list]
-		#		print("The matches are:", matches)
 			number_matches = len(matches)
 			number_tips = len(tip_list)
 			proportion_match = number_matches / number_tips
-		#		print("The number of matches is:", number_matches)
+		#		print("The matches are", matches, The number of matches is:", number_matches)
 			if proportion_match >= threshold:
 	#			print("The node that matches is:", node.name)
 	#			print("The matched list is:", matches, "while the total tips at the node is:", tip_list)
@@ -262,29 +224,23 @@ def map_splits(List_unique_splits, t, threshold):
 				if len(spp_with_loss) != 0:
 					loss_entry = {'Merians':Split_event, 'Tips':str(spp_with_loss), 'Node':node.name}
 					lost_splits_dict.append(loss_entry)
-				value = str(Split_event)
 				NODE = node.name
 				NODE = str(NODE)
 				if NODE in nodes_with_splits_list:
 					nodes_with_splits_list[NODE] += 1
-					Split_x = nodes_with_splits_list[NODE]
-					Split_x = "Split" + str(Split_x)
-					node.add_feature(Split_x, value)
 				else:
-					node.add_feature("Split1", value)
 					nodes_with_splits_list[NODE] = 1
-				print("THE NEW LABEL IS:", node.Split1)
 				for element in tip_list:
 					if element in spp_list:
 						spp_list.remove(element)
-				print("After removing these tips, the total list now is:", spp_list)
-	print("The final mapped splits are:", mapped_splits_dict) 	# So far the max number of (sensible) fusions per node is 8
+	#			print("After removing these tips, the total list now is:", spp_list)
+	#print("The final mapped splits are:", mapped_splits_dict) 	# So far the max number of (sensible) fusions per node is 8
 	#print(t.get_ascii(show_internal=True, attributes = ["name", "Split1", "Split2", "Split3", "Split4", "Split5", "Split6", "Split7", "Split8", "Split9", "Split10", "Split11", "Split12", "Split13", "Split14", "Split15"]))
 	lost_splits_df = pd.DataFrame(lost_splits_dict) # Convert lost splits to dataframes
 	return(mapped_splits_dict, lost_splits_df, t)
 
 def make_list_unique_losses(lost_fusions_df):
-	unique_combos_losses= lost_fusions_df.Fusion.astype('str').unique()
+	unique_combos_losses= lost_fusions_df.Merians.astype('str').unique()
 	List_unique_lost_fusions = []
 #	threshold = 1
 	for i in unique_combos_losses:
@@ -292,7 +248,7 @@ def make_list_unique_losses(lost_fusions_df):
 	#		value = str(i)
 		spp_with_lost_fusion = []
 		for index, row in lost_fusions_df.iterrows():
-				Merians = str(row['Fusion'])
+				Merians = str(row['Merians'])
 				Merians =  Merians.split(',')
 				value = i.split(",")
 				matched_merians = set(Merians)&set(value)
@@ -300,12 +256,11 @@ def make_list_unique_losses(lost_fusions_df):
 				number_matched = len(matched_merians)
 				number_in_unique_combo = len(value)
 				total_number_merians = len(Merians)
-				percent_match = number_matched / total_number_merians
+			#	percent_match = number_matched / total_number_merians
 				if number_matched == number_in_unique_combo:
-					print("SUCESS", Merians)
+				#	print("SUCESS", Merians)
 				#if percent_match >= threshold:
 					Species = str(row['Tips'])
-					print(Species)
 					spp_with_lost_fusion.append(Species)
 		entry = {'Unique_Merian_combo':i, 'Spp_with_lost_fusion':spp_with_lost_fusion}
 		List_unique_lost_fusions.append(entry)
@@ -320,38 +275,26 @@ def map_lost_fusions(List_unique_lost_fusions, t):
 		spp_list = str(key['Spp_with_lost_fusion'])
 		spp_list = re.sub('[!*)@#%(&$?\'\".\]\[^]', '', spp_list)
 		spp_list = spp_list.split(",")
-	#	print(spp_list[0])
-		#spp_list = str(spp_list)
-		#spp_list = spp_list.split(",")
-	#	check_list = isinstance(spp_list, list)
-	#	print(spp_list)
-	#	print(isinstance(spp_list, list))
 		for node in t.traverse("preorder"):
 			tip_list = []
 			for leaf in node:
 				tip = leaf.name
 				tip_list.append(tip)
 			if all(x in spp_list for x in tip_list):
+				tips = re.sub(r"[\[\]']", '', str(tip_list))
 				#print("The node that matches is:", node.name, "The matched list is:", matches, "while the total tips at the node is:", tip_list)
-				entry = {'Lost_fusion':Lost_fusion, 'Tips':str(tip_list), 'Node':node.name}
+				entry = {'Merians':Lost_fusion, 'Tips':str(tips), 'Node':node.name}
 				mapped_lost_fusions_dict.append(entry)
 				value = str(Lost_fusion)
 				NODE = node.name
 				NODE = str(NODE)
 				if NODE in nodes_with_lost_fusions_list:
 					nodes_with_lost_fusions_list[NODE] += 1
-					Loss_x = nodes_with_lost_fusions_list[NODE]
-					Loss_x = "Loss" + str(Loss_x)
-					node.add_feature(Loss_x, value)
 				else:
-					node.add_feature("Loss1", value)
 					nodes_with_lost_fusions_list[NODE] = 1
-				for element in matches:  # bug in code - should be tip_list??
+				for element in tip_list: 
 					if element in spp_list:
 						spp_list.remove(element)
-	#			print("After removing these tips, the total list now is:", spp_list)
-	#print("The final mapped fusions are:", mapped_fusions_dict)
-	#print(t.get_ascii(show_internal=True, attributes = ["name", "Loss1", 'Loss2', "Loss3", "Loss4", "Loss5", "Loss6", "Loss7", "Loss8", "Loss9", "Loss10", "Loss11", "Loss12", "Loss13", "Loss14", "Loss14", "Loss15"]))
 	return(mapped_lost_fusions_dict, t)
 
 def split_layout(node): # layouts are functions that allow you to make modifications on each node before they've been drawn. 
@@ -375,7 +318,63 @@ def split_layout(node): # layouts are functions that allow you to make modificat
 		name_face = AttrFace("name", fsize=10)
 		faces.add_face_to_node(name_face, node, column=0, position="branch-right") # Adds the name face to the image at the preferred position
 
-def write_results(output_location, df_combined, mapped_fusions_dict, mapped_splits_dict, lost_fusions_df, lost_splits_df, prefix): # save results
+def annotate_tree_with_fusions(mapped_fusions_dict, mapped_lost_fusions_dict, t):
+	nodes_with_fusions_dict = {}
+	for entry in mapped_fusions_dict:
+		fusion_event, tips, node_name = entry['Merians'], entry['Tips'], entry['Node']
+	#	print(fusion_event, tips, node_name) # all fusions, regardless of if its a subset of another fusion or not, are plotted in the same way
+		node= t&node_name # the shorcut to finding nodes by name
+		if node_name in nodes_with_fusions_dict:
+			nodes_with_fusions_dict[node_name] += 1
+			Fusion_x = nodes_with_fusions_dict[node_name]
+			Fusion_x = "Fusion" + str(Fusion_x)
+			node.add_feature(Fusion_x, fusion_event)
+		else:
+			node.add_feature("Fusion1", fusion_event)
+			nodes_with_fusions_dict[node_name] = 1
+		#	So far the max number of (sensible) fusions per node is 8
+	# print(t.get_ascii(show_internal=True, attributes = ["name", 'Fusion1', "Fusion2", "Fusion3", "Fusion4", "Fusion5", "Fusion6", "Fusion7", "Fusion8", "Fusion9", "Fusion10", "Fusion11", "Fusion12", "Fusion13", "Fusion14", "Fusion15", "Fusion16", "Fusion17", "Fusion18", "Fusion19", "Fusion20", "Fusion21", "Fusion22", "Fusion23", "Fusion24", "Fusion25", "Fusion26", "Fusion27", "Fusion28", "Fusion29", "Fusion30", "Fusion31", "Fusion32", "Fusion33", "Fusion34", "Fusion35", "Fusion36", "Fusion37", "Fusion38", "Fusion39", "Fusion40", "Fusion41"]))
+	if len(mapped_lost_fusions_dict) != 0: # only need to annotated tree with lost fusions if there are any
+		for entry in mapped_lost_fusions_dict:
+			fusion_loss_event, spp_with_loss, node_name = entry['Merians'], entry['Tips'], entry['Node']
+			spp_with_loss = spp_with_loss.split(' ')
+			spp1 = str(spp_with_loss[0])
+			spp1 = t&spp1 # the shorcut to finding nodes by name
+			spp1.add_feature("Loss1", fusion_loss_event)
+			if len(spp_with_loss) == 2:
+				spp1, spp2 = str(spp_with_loss[0]), str(spp_with_loss[1])
+				spp1 = t&spp1
+				spp2 = t&spp2
+				spp1.add_feature("Loss1", fusion_loss_event)
+				spp2.add_feature("Loss1", fusion_loss_event)
+			if len(spp_with_loss) == 3:
+				spp1, spp2, spp3 = str(spp_with_loss[0]), str(spp_with_loss[1]), str(spp_with_loss[2])
+				spp1 = t&spp1
+				spp2 = t&spp2
+				spp3 = t&spp3
+				spp1.add_feature("Loss1", fusion_loss_event)
+				spp2.add_feature("Loss1", fusion_loss_event)
+				spp3.add_feature("Loss1", fusion_loss_event)
+	return(t)
+
+def annotate_tree_with_splits(mapped_splits_dict, t):
+	nodes_with_splits_dict = {}
+	for entry in mapped_splits_dict:
+		split_event, tips, node_name = entry['Merians'], entry['Tips'], entry['Node'] # all fusions, regardless of if its a subset of another fusion or not, are plotted in the same way
+		node= t&node_name # the shorcut to finding nodes by name
+		if node_name in nodes_with_splits_dict:
+			nodes_with_splits_dict[node_name] += 1
+			Event_x = nodes_with_splits_dict[node_name]
+			Event_x = "Fission" + str(Event_x)
+			node.add_feature(Event_x, split_event)
+		else:
+			node.add_feature("Fission1", split_event)
+			nodes_with_splits_dict[node_name] = 1
+#	print("The final mapped splits are:", mapped_splits_dict) 	
+#	print(t.get_ascii(show_internal=True, attributes = ["name", "Fission1", "Fission2", "Fission3", "Fission4", "Fission5", "Fission6", "Fission7", "Fission8"]))
+	return(t)
+
+def write_results(output_location, t, df_combined, mapped_fusions_dict, mapped_splits_dict, lost_fusions_df, lost_splits_df, prefix): # save results
 	Directory = str(output_location) 
 	if not os.path.exists(Directory):
 		os.mkdir(Directory)
@@ -395,7 +394,7 @@ def write_results(output_location, df_combined, mapped_fusions_dict, mapped_spli
 	fusion_tree = str(output_location) + 'annotated_fusions_tree_' + str(prefix) + '.nw' # Save annotated trees as nwk files
 	fission_tree = str(output_location) + 'annotated_fissions_tree_' + str(prefix) + '.nw'
 	t.write(features=["name", "Fusion1", "Fusion2", "Fusion3", "Fusion4", "Fusion5", "Fusion6", "Fusion7", "Fusion8", "Fusion9", "Fusion10", "Fusion11"], outfile=fusion_tree)
-	t.write(features=["name", "Split1", "Split2", "Split3", "Split4", "Split5", "Split6", "Split7", "Split8", "Split9", "Split10", "Split11", "Split12", "Split13", "Split14", "Split15"], outfile=fission_tree)
+	t.write(features=["name", "Fission1", "Fission2", "Fission3", "Fission4", "Fission5", "Fission6", "Fission7", "Fission8"], outfile=fission_tree)
 	return
 
 def get_event_stats(mapped_fusions_dict, mapped_splits_dict):
@@ -413,51 +412,60 @@ def get_event_stats(mapped_fusions_dict, mapped_splits_dict):
 			SplitsCount[Node] += 1
 		else:
 			SplitsCount[Node] = 1
-	print("Total number of mapped fusions per spp:", FusionsCount)
+	print("Total number of mapped fusions per node:", FusionsCount)
 	print("Total number of mapped fusion events:", len(mapped_fusions_dict))
-	print("Total number of mapped splits per spp:", SplitsCount)
+	print("Total number of mapped splits per node:", SplitsCount)
 	print("Total number of mapped split events:", len(mapped_splits_dict))
 	print("Total number of fusion chromosomes:", sum(FusionsCount.values()))
 	print("Total number of split chromosomes:", sum(SplitsCount.values()))
 	print("Maximum number of fused chromosomes:", max(FusionsCount.values()))
 	print("Maximum number of split chromosomes:", max(SplitsCount.values()))
 #%%
-#from lustre.scratch116.tol.teams.team301.projects.lepidoptera_genomics.cw22.Datafreeze_080621.Analysis.Features.Ancestral_assignments.lep_fusion_split_finder_v1.Split_chr.Map_all_splits import List_to_plot
-#parser = argparse.ArgumentParser(description='This maps each fusion and split event onto the phylogeny')
-#parser.add_argument("--output", help="This is the location for the output file")
-#parser.add_argument("--prefix", help="This is the prefix to all files")
-#args = parser.parse_args()
-#output_location = args.output
-#prefix = args.prefix
+if __name__ == "__main__":
+	SCRIPT = "Map_fusion_fissions.py"
+	# argument set up
+	parser = argparse.ArgumentParser()
+	parser.add_argument("-i", "--input_data", type=str, help = "path to lep_fusion_fission_finder output", required=True)
+	parser.add_argument("-tree", "--tree", type=str, help = "Phylogenetic tree", default="fsf")
+	parser.add_argument("-o", "--output", type=str, help = "output location relative to working directory", required=True)
+	parser.add_argument("-f", "--prefix", type=str, help = "Prefix for all output files", default="fsf")
+	parser.add_argument("-t", "--threshold", type=int, help = "Threshold for rearrangement to be shared between tips", default=0.75)
+	args = parser.parse_args()
+	input_data = args.input_data
+	tree_file = args.tree
+	output_location = args.output
+	prefix = args.prefix
+	threshold = args.threshold
 
-### Define variables ###
-prefix = 'test1'
-input_path = '.'
-output_location = '/lustre/scratch123/tol/teams/blaxter/projects/lepidoptera_genomics/cw22/Leps_200/Software/lep_fusion_fission_finder/output/' # "/lustre/scratch123/tol/teams/blaxter/projects/lepidoptera_genomics/cw22/Datafreeze_080621/Analysis/Features/Ancestral_assignments/lep_fusion_split_finder_v2/spp_files/"
-tree_file = '../data/supermatrix_120721.treefile' # used in original v2.6 script
-threshold = 0.75
+	# Run functions
+	file_list = parse_info(input_data)
+	df_combined = gather_stats_and_make_table(file_list)
+	filtered_fusions, filtered_splits, unique_combos_fusions, unique_merians_splits = get_fusions_splits_and_unique_events(df_combined)
+	List_unique_fusions = assign_spp_to_fusions(unique_combos_fusions)
+	List_unique_fusions.sort(key=sort_list_high2low)
+	List_unique_splits = assign_spp_to_splits(unique_merians_splits)
+#	print("List of unique fusions:", List_unique_fusions)
+#	print("List of unique splits:", List_unique_splits)
+	t = parse_tree(tree_file) # currently has Hyd_tenuis in it?
+	mapped_fusions_dict, lost_fusions_df, t = map_fusions(List_unique_fusions, t, threshold)
+	mapped_splits_dict, lost_splits_df, t = map_splits(List_unique_splits, t, threshold)
+	if not lost_fusions_df.empty: # if there are any lost fusions in the dataframe
+		List_unique_lost_fusions = make_list_unique_losses(lost_fusions_df) 
+		mapped_lost_fusions_dict, t = map_lost_fusions(List_unique_lost_fusions, t)
+	t = annotate_tree_with_fusions(mapped_fusions_dict, mapped_lost_fusions_dict, t) # Optional - if want to draw annotated trees
+	t = annotate_tree_with_splits(mapped_splits_dict, t)
+	write_results(output_location, t, df_combined, mapped_fusions_dict, mapped_splits_dict, lost_fusions_df, lost_splits_df, prefix)
+	get_event_stats(mapped_fusions_dict, mapped_splits_dict) # Check number of fusions & splits that map to each node
 
-### Run functions ###
-file_list = parse_info(input_path)
-df_combined = gather_stats_and_make_table(file_list)
-filtered_fusions, filtered_splits, unique_combos_fusions, unique_merians_splits = get_fusions_splits_and_unique_events(df_combined)
-List_unique_fusions = assign_spp_to_fusions(unique_combos_fusions)
-List_unique_fusions.sort(key=sort_list_high2low)
-List_unique_splits = assign_spp_to_splits(unique_merians_splits)
-print("The list of unique fusions is:", List_unique_fusions)
-print("The list of unique splits is:", List_unique_splits)
-t = parse_tree(tree_file) # currently has Hyd_tenuis in it?
-mapped_fusions_dict, lost_fusions_df, t = map_fusions(List_unique_fusions, t, threshold)
-mapped_splits_dict, lost_splits_df, t = map_splits(List_unique_splits, t, threshold)
-if not lost_fusions_df.empty: # if there are any lost fusions in the dataframe
-	List_unique_lost_fusions = make_list_unique_losses(lost_fusions_df) 
-	mapped_lost_fusions_dict, t = map_lost_fusions(List_unique_lost_fusions, t)
-write_results(output_location, df_combined, mapped_fusions_dict, mapped_splits_dict, lost_fusions_df, lost_splits_df, prefix)
-get_event_stats(mapped_fusions_dict, mapped_splits_dict) # Check number of fusions & splits that map to each node
+#prefix = 'datasetfreeze_data'
+#input_data = '../data/'
+#tree_file = '../data/supermatrix_120721.treefile' # used in original v2.6 script
+#output_location = '/lustre/scratch123/tol/teams/blaxter/projects/lepidoptera_genomics/cw22/Leps_200/Software/lep_fusion_fission_finder/output/' # "/lustre/scratch123/tol/teams/blaxter/projects/lepidoptera_genomics/cw22/Datafreeze_080621/Analysis/Features/Ancestral_assignments/lep_fusion_split_finder_v2/spp_files/"
+#threshold = 0.75
 
+quit()
 #%%
-# This code currently causes jupyter to crash?
-# Not sure if needed anyway?
+# This code currently causes jupyter to crash? Not sure if needed anyway?
 ts = TreeStyle() # Render tree with mapped fusions
 ts.layout_fn = split_layout # Use my custom layout
 ts.show_leaf_name = False # Do not add leaf names automatically
