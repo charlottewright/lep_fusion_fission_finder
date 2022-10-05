@@ -95,8 +95,8 @@ def assign_spp_to_splits(unique_merians_splits):
 
 def parse_tree(tree_file):
 	t = Tree(tree_file, format=1) # Format_1 means node names are present and read - we have node names thanks to the replacement of branch support values with unique numbers done above :)
-	t.set_outgroup(t&"Hydropsyche_tenuis") # Root the tree then label the internal node
-	count = 0
+#	t.set_outgroup(t&"Hydropsyche_tenuis") # Root the tree 
+	count = 0 # Label each internal node with a number starting from 1
 	for node in t.traverse("preorder"):
 		if node.is_leaf():
 			continue
@@ -136,8 +136,9 @@ def map_fusions(List_unique_fusions, t, threshold):
 			if proportion_match >= threshold:
 				#print("The node that matches is:", node.name)
 			#	print("The matched list is:", matches, "while the total tips at the node is:", tip_list)
-				matches = re.sub(r"[\{\}']", '', str(matches))
-				entry = {'Merians':Fusion_event, 'Tips':str(matches), 'Node':node.name}
+				matches = sorted(matches)
+				matched = re.sub(r"[\{\}\[\]']", '', str(matches))
+				entry = {'Merians':Fusion_event, 'Tips':str(matched), 'Node':node.name}
 				mapped_fusions_dict.append(entry)
 				if len(spp_with_loss) != 0:
 					loss_entry = {'Merians':Fusion_event, 'Tips':spp_with_loss, 'Node':node.name}
@@ -218,8 +219,8 @@ def map_splits(List_unique_splits, t, threshold):
 			if proportion_match >= threshold:
 	#			print("The node that matches is:", node.name)
 	#			print("The matched list is:", matches, "while the total tips at the node is:", tip_list)
-				matches = re.sub(r"[\{\}']", '', str(matches))
-				entry = {'Merians':Split_event, 'Tips':str(matches), 'Node':node.name}
+				matched = re.sub(r"[\{\}']", '', str(matches))
+				entry = {'Merians':Split_event, 'Tips':str(matched), 'Node':node.name}
 				mapped_splits_dict.append(entry)
 				if len(spp_with_loss) != 0:
 					loss_entry = {'Merians':Split_event, 'Tips':str(spp_with_loss), 'Node':node.name}
@@ -230,7 +231,7 @@ def map_splits(List_unique_splits, t, threshold):
 					nodes_with_splits_list[NODE] += 1
 				else:
 					nodes_with_splits_list[NODE] = 1
-				for element in tip_list:
+				for element in matches:
 					if element in spp_list:
 						spp_list.remove(element)
 	#			print("After removing these tips, the total list now is:", spp_list)
@@ -318,7 +319,8 @@ def split_layout(node): # layouts are functions that allow you to make modificat
 		name_face = AttrFace("name", fsize=10)
 		faces.add_face_to_node(name_face, node, column=0, position="branch-right") # Adds the name face to the image at the preferred position
 
-def annotate_tree_with_fusions(mapped_fusions_dict, mapped_lost_fusions_dict, t):
+def annotate_tree_with_fusions(mapped_fusions_dict, t):
+	print('lets go')
 	nodes_with_fusions_dict = {}
 	for entry in mapped_fusions_dict:
 		fusion_event, tips, node_name = entry['Merians'], entry['Tips'], entry['Node']
@@ -334,27 +336,30 @@ def annotate_tree_with_fusions(mapped_fusions_dict, mapped_lost_fusions_dict, t)
 			nodes_with_fusions_dict[node_name] = 1
 		#	So far the max number of (sensible) fusions per node is 8
 	# print(t.get_ascii(show_internal=True, attributes = ["name", 'Fusion1', "Fusion2", "Fusion3", "Fusion4", "Fusion5", "Fusion6", "Fusion7", "Fusion8", "Fusion9", "Fusion10", "Fusion11", "Fusion12", "Fusion13", "Fusion14", "Fusion15", "Fusion16", "Fusion17", "Fusion18", "Fusion19", "Fusion20", "Fusion21", "Fusion22", "Fusion23", "Fusion24", "Fusion25", "Fusion26", "Fusion27", "Fusion28", "Fusion29", "Fusion30", "Fusion31", "Fusion32", "Fusion33", "Fusion34", "Fusion35", "Fusion36", "Fusion37", "Fusion38", "Fusion39", "Fusion40", "Fusion41"]))
-	if len(mapped_lost_fusions_dict) != 0: # only need to annotated tree with lost fusions if there are any
-		for entry in mapped_lost_fusions_dict:
-			fusion_loss_event, spp_with_loss, node_name = entry['Merians'], entry['Tips'], entry['Node']
-			spp_with_loss = spp_with_loss.split(' ')
-			spp1 = str(spp_with_loss[0])
-			spp1 = t&spp1 # the shorcut to finding nodes by name
+	return(t)
+
+
+def annotate_tree_with_lost_fusions(mapped_lost_fusions_dict, t): # only need to annotated tree with lost fusions if there are any
+	for entry in mapped_lost_fusions_dict:
+		fusion_loss_event, spp_with_loss = entry['Merians'], entry['Tips']
+		spp_with_loss = spp_with_loss.split(' ')
+		spp1 = str(spp_with_loss[0])
+		spp1 = t&spp1 # the shorcut to finding nodes by name
+		spp1.add_feature("Loss1", fusion_loss_event)
+		if len(spp_with_loss) == 2:
+			spp1, spp2 = str(spp_with_loss[0]), str(spp_with_loss[1])
+			spp1 = t&spp1
+			spp2 = t&spp2
 			spp1.add_feature("Loss1", fusion_loss_event)
-			if len(spp_with_loss) == 2:
-				spp1, spp2 = str(spp_with_loss[0]), str(spp_with_loss[1])
-				spp1 = t&spp1
-				spp2 = t&spp2
-				spp1.add_feature("Loss1", fusion_loss_event)
-				spp2.add_feature("Loss1", fusion_loss_event)
-			if len(spp_with_loss) == 3:
-				spp1, spp2, spp3 = str(spp_with_loss[0]), str(spp_with_loss[1]), str(spp_with_loss[2])
-				spp1 = t&spp1
-				spp2 = t&spp2
-				spp3 = t&spp3
-				spp1.add_feature("Loss1", fusion_loss_event)
-				spp2.add_feature("Loss1", fusion_loss_event)
-				spp3.add_feature("Loss1", fusion_loss_event)
+			spp2.add_feature("Loss1", fusion_loss_event)
+		if len(spp_with_loss) == 3:
+			spp1, spp2, spp3 = str(spp_with_loss[0]), str(spp_with_loss[1]), str(spp_with_loss[2])
+			spp1 = t&spp1
+			spp2 = t&spp2
+			spp3 = t&spp3
+			spp1.add_feature("Loss1", fusion_loss_event)
+			spp2.add_feature("Loss1", fusion_loss_event)
+			spp3.add_feature("Loss1", fusion_loss_event)
 	return(t)
 
 def annotate_tree_with_splits(mapped_splits_dict, t):
@@ -419,7 +424,10 @@ def get_event_stats(mapped_fusions_dict, mapped_splits_dict):
 	print("Total number of fusion chromosomes:", sum(FusionsCount.values()))
 	print("Total number of split chromosomes:", sum(SplitsCount.values()))
 	print("Maximum number of fused chromosomes:", max(FusionsCount.values()))
-	print("Maximum number of split chromosomes:", max(SplitsCount.values()))
+	if len(mapped_splits_dict) != 0:
+		print("Maximum number of split chromosomes:", max(SplitsCount.values()))
+	else:
+		print("Maximum number of split chromosomes: 0")
 #%%
 if __name__ == "__main__":
 	SCRIPT = "Map_fusion_fissions.py"
@@ -452,7 +460,9 @@ if __name__ == "__main__":
 	if not lost_fusions_df.empty: # if there are any lost fusions in the dataframe
 		List_unique_lost_fusions = make_list_unique_losses(lost_fusions_df) 
 		mapped_lost_fusions_dict, t = map_lost_fusions(List_unique_lost_fusions, t)
-	t = annotate_tree_with_fusions(mapped_fusions_dict, mapped_lost_fusions_dict, t) # Optional - if want to draw annotated trees
+	t = annotate_tree_with_fusions(mapped_fusions_dict, t) # Optional - if want to draw annotated trees
+	if not lost_fusions_df.empty: # only annotate with lost fusions if there are any
+		t = annotate_tree_with_lost_fusions(mapped_lost_fusions_dict, t)
 	t = annotate_tree_with_splits(mapped_splits_dict, t)
 	write_results(output_location, t, df_combined, mapped_fusions_dict, mapped_splits_dict, lost_fusions_df, lost_splits_df, prefix)
 	get_event_stats(mapped_fusions_dict, mapped_splits_dict) # Check number of fusions & splits that map to each node
