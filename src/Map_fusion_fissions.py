@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 #%%
 # Code taken from Map_fusion_splits_v2.6.py (dated 27/8/21) on 1/10/22 
 import os, sys, glob, argparse, re
@@ -25,10 +25,7 @@ def gather_stats_and_make_table(file_list):
 			file = pd.read_csv(file_name, sep='\t', index_col = False) # Header = "query_chr", "status", "assigned_ref_chr"
 			Spp_name = file_name.split('/')
 			Spp_name = Spp_name[int(input_data.count('/'))] # altered depending on file path to get just file name
-			Spp_name = Spp_name.split('_')
-			Genus = Spp_name[0]
-			Species = Spp_name[1]
-			Full_name = Genus + '_' + Species
+			Spp_name = Spp_name.replace('_chromosome_assignments.tsv','')
 			chr_list = []
 			for value in file.query_chr:
 					chr_list.append(value)
@@ -44,7 +41,7 @@ def gather_stats_and_make_table(file_list):
 						total_number_fusions = total_number_fusions + 1
 					if STATUS == "split":
 						total_number_splits = total_number_splits + 1
-					entry = {'Chrom_ID':query_chr, 'Status':STATUS, 'Assigned_ref_chr':ASSIGNED, 'Spp':Full_name }
+					entry = {'Chrom_ID':query_chr, 'Status':STATUS, 'Assigned_ref_chr':ASSIGNED, 'Spp':Spp_name }
 					d.append(entry)
 	df_combined = pd.DataFrame(d)
 	return(df_combined)
@@ -93,16 +90,16 @@ def assign_spp_to_splits(unique_merians_splits):
 			List_unique_splits.append(entry)
 	return(List_unique_splits)
 
-def parse_tree(tree_file):
+def parse_tree(tree_file, label_status):
 	t = Tree(tree_file, format=1) # Format_1 means node names are present and read - we have node names thanks to the replacement of branch support values with unique numbers done above :)
-#	t.set_outgroup(t&"Hydropsyche_tenuis") # Root the tree 
-	count = 0 # Label each internal node with a number starting from 1
-	for node in t.traverse("preorder"):
-		if node.is_leaf():
-			continue
-		else:
-			count = count + 1
-			node.name = str(count)
+	if label_status == 'False':
+		count = -1 # Label each internal node with a number starting from 0
+		for node in t.traverse("preorder"):
+			if node.is_leaf():
+				continue
+			else:
+				count = count + 1
+				node.name = str('n') + str(count)
 	return(t)
 
 def search(Node, mapped_fusions_dict): # I don't think this function is ever used???
@@ -235,8 +232,6 @@ def map_splits(List_unique_splits, t, threshold):
 					if element in spp_list:
 						spp_list.remove(element)
 	#			print("After removing these tips, the total list now is:", spp_list)
-	#print("The final mapped splits are:", mapped_splits_dict) 	# So far the max number of (sensible) fusions per node is 8
-	#print(t.get_ascii(show_internal=True, attributes = ["name", "Split1", "Split2", "Split3", "Split4", "Split5", "Split6", "Split7", "Split8", "Split9", "Split10", "Split11", "Split12", "Split13", "Split14", "Split15"]))
 	lost_splits_df = pd.DataFrame(lost_splits_dict) # Convert lost splits to dataframes
 	return(mapped_splits_dict, lost_splits_df, t)
 
@@ -334,10 +329,7 @@ def annotate_tree_with_fusions(mapped_fusions_dict, t):
 		else:
 			node.add_feature("Fusion1", fusion_event)
 			nodes_with_fusions_dict[node_name] = 1
-		#	So far the max number of (sensible) fusions per node is 8
-	# print(t.get_ascii(show_internal=True, attributes = ["name", 'Fusion1', "Fusion2", "Fusion3", "Fusion4", "Fusion5", "Fusion6", "Fusion7", "Fusion8", "Fusion9", "Fusion10", "Fusion11", "Fusion12", "Fusion13", "Fusion14", "Fusion15", "Fusion16", "Fusion17", "Fusion18", "Fusion19", "Fusion20", "Fusion21", "Fusion22", "Fusion23", "Fusion24", "Fusion25", "Fusion26", "Fusion27", "Fusion28", "Fusion29", "Fusion30", "Fusion31", "Fusion32", "Fusion33", "Fusion34", "Fusion35", "Fusion36", "Fusion37", "Fusion38", "Fusion39", "Fusion40", "Fusion41"]))
 	return(t)
-
 
 def annotate_tree_with_lost_fusions(mapped_lost_fusions_dict, t): # only need to annotated tree with lost fusions if there are any
 	for entry in mapped_lost_fusions_dict:
@@ -375,8 +367,6 @@ def annotate_tree_with_splits(mapped_splits_dict, t):
 		else:
 			node.add_feature("Fission1", split_event)
 			nodes_with_splits_dict[node_name] = 1
-#	print("The final mapped splits are:", mapped_splits_dict) 	
-#	print(t.get_ascii(show_internal=True, attributes = ["name", "Fission1", "Fission2", "Fission3", "Fission4", "Fission5", "Fission6", "Fission7", "Fission8"]))
 	return(t)
 
 def write_results(output_location, t, df_combined, mapped_fusions_dict, mapped_splits_dict, lost_fusions_df, lost_splits_df, prefix): # save results
@@ -438,12 +428,14 @@ if __name__ == "__main__":
 	parser.add_argument("-o", "--output", type=str, help = "output location relative to working directory", required=True)
 	parser.add_argument("-f", "--prefix", type=str, help = "Prefix for all output files", default="fsf")
 	parser.add_argument("-t", "--threshold", type=int, help = "Threshold for rearrangement to be shared between tips", default=0.75)
+	parser.add_argument("-l", "--label", type=str, help = "Specify if tree already contains internal node labels", default='False')
 	args = parser.parse_args()
 	input_data = args.input_data
 	tree_file = args.tree
 	output_location = args.output
 	prefix = args.prefix
 	threshold = args.threshold
+	label_status = args.label
 
 	# Run functions
 	file_list = parse_info(input_data)
@@ -452,9 +444,7 @@ if __name__ == "__main__":
 	List_unique_fusions = assign_spp_to_fusions(unique_combos_fusions)
 	List_unique_fusions.sort(key=sort_list_high2low)
 	List_unique_splits = assign_spp_to_splits(unique_merians_splits)
-#	print("List of unique fusions:", List_unique_fusions)
-#	print("List of unique splits:", List_unique_splits)
-	t = parse_tree(tree_file) # currently has Hyd_tenuis in it?
+	t = parse_tree(tree_file, label_status)
 	mapped_fusions_dict, lost_fusions_df, t = map_fusions(List_unique_fusions, t, threshold)
 	mapped_splits_dict, lost_splits_df, t = map_splits(List_unique_splits, t, threshold)
 	if not lost_fusions_df.empty: # if there are any lost fusions in the dataframe
@@ -472,6 +462,14 @@ if __name__ == "__main__":
 #tree_file = '../data/supermatrix_120721.treefile' # used in original v2.6 script
 #output_location = '/lustre/scratch123/tol/teams/blaxter/projects/lepidoptera_genomics/cw22/Leps_200/Software/lep_fusion_fission_finder/output/' # "/lustre/scratch123/tol/teams/blaxter/projects/lepidoptera_genomics/cw22/Datafreeze_080621/Analysis/Features/Ancestral_assignments/lep_fusion_split_finder_v2/spp_files/"
 #threshold = 0.75
+
+#	print("List of unique fusions:", List_unique_fusions)
+#	print("List of unique splits:", List_unique_splits)
+# print(t.get_ascii(show_internal=True, attributes = ["name", "Fission1", "Fission2", "Fission3", "Fission4", "Fission5", "Fission6", "Fission7", "Fission8"]))
+#	So far the max number of (sensible) fusions per node is 8
+# print(t.get_ascii(show_internal=True, attributes = ["name", 'Fusion1', "Fusion2", "Fusion3", "Fusion4", "Fusion5", "Fusion6", "Fusion7", "Fusion8", "Fusion9", "Fusion10", "Fusion11", "Fusion12", "Fusion13", "Fusion14", "Fusion15", "Fusion16", "Fusion17", "Fusion18", "Fusion19", "Fusion20", "Fusion21", "Fusion22", "Fusion23", "Fusion24", "Fusion25", "Fusion26", "Fusion27", "Fusion28", "Fusion29", "Fusion30", "Fusion31", "Fusion32", "Fusion33", "Fusion34", "Fusion35", "Fusion36", "Fusion37", "Fusion38", "Fusion39", "Fusion40", "Fusion41"]))
+#print("The final mapped splits are:", mapped_splits_dict) 	# So far the max number of (sensible) fusions per node is 8
+#print(t.get_ascii(show_internal=True, attributes = ["name", "Split1", "Split2", "Split3", "Split4", "Split5", "Split6", "Split7", "Split8", "Split9", "Split10", "Split11", "Split12", "Split13", "Split14", "Split15"]))
 
 quit()
 #%%
