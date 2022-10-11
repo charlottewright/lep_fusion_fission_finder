@@ -37,7 +37,7 @@ optional arguments:
  
  `Map_fusion_fissions.py` takes the output of `fusion_split_finder.py` and infers where fusion/fission occured in a given tree.
  
- `python3 ./Map_fusion_fissions.py -i chr_assignments/ -tree spp.treefile -o output/ -f test_run`
+ `./Map_fusion_fissions.py -i chr_assignments/ -tree spp.treefile -t 1 -o output/ -f test_run`
  
  This will write five files:
  
@@ -52,7 +52,7 @@ optional arguments:
  ### Full uages:
  
  ```
- usage: Map_fusion_fissions.py [-h] -i INPUT_DATA [-tree TREE] -o OUTPUT [-f PREFIX] [-t THRESHOLD]
+usage: Map_fusion_fissions.py [-h] -i INPUT_DATA [-tree TREE] -o OUTPUT [-f PREFIX] [-t THRESHOLD] [-l LABEL]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -66,5 +66,7 @@ optional arguments:
                         Prefix for all output files
   -t THRESHOLD, --threshold THRESHOLD
                         Threshold for rearrangement to be shared between tips
+  -l LABEL, --label LABEL
+                        Specify if tree already contains internal node labels
  ```
 
