@@ -156,12 +156,13 @@ def account_for_subsets_of_fusions(List_unique_fusions, t): # this function adds
 		Fusion_event = key["Unique_Merian_combo"].split(',')
 		spp_list = key['spp_with_fusion']
 		if len(Fusion_event)  == 3:
+			spp_remaining = list(spp_list)
 			mapped_subsets_counter = 0
 			fusion_pairs = combinantorial(Fusion_event) # make tuple of all possible pairs of merians to fuse
 			for Subset_fusion_event in fusion_pairs:
 				Subset_fusion_event =  list(Subset_fusion_event) # convert to list so same format as 'Fusion_event'
 				for node in t.traverse("preorder"):
-					temp_spp_list = list(spp_list) # need to make a copy of list like so to prevent lists being linked
+					temp_spp_list = list(spp_remaining) # need to make a copy of list like so to prevent lists being linked
 					total_new_spp, tip_list = 0, []
 					for leaf in node:
 						tip = leaf.name
@@ -187,6 +188,9 @@ def account_for_subsets_of_fusions(List_unique_fusions, t): # this function adds
 										fusion_merians = re.sub(r"[\{\}\[\]']", '', str(Subset_fusion_event))
 										fusion_merians = fusion_merians.replace(' ','')
 										entry = {'Merians':fusion_merians, 'Tips':str(matched), 'Node':node.name}
+										for element in matches:
+											if element in spp_remaining:
+												spp_remaining.remove(element)
 										if entry not in mapped_fusions_dict:
 											mapped_fusions_dict.append(entry)
 											mapped_subsets_counter =+1
@@ -459,7 +463,7 @@ if __name__ == "__main__":
 	print("\t[+] Writing results to " + str(output_location) + "overall_assignments_" + prefix + ".tsv")
 	write_results(output_location, t, df_combined, mapped_fusions_dict, mapped_splits_dict, lost_fusions_df, lost_splits_df, prefix)
 	get_event_stats(mapped_fusions_dict, mapped_splits_dict) # Check number of fusions & splits that map to each node
-
+#%%
 quit()
 
 # print(t.get_ascii(show_internal=True, attributes = ["name", "Fission1", "Fission2", "Fission3", "Fission4", "Fission5", "Fission6", "Fission7", "Fission8"]))
