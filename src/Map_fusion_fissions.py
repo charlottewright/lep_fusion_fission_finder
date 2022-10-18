@@ -98,6 +98,7 @@ def search(Node, mapped_fusions_dict): # I don't think this function is ever us
     return [element for element in mapped_fusions_dict if element['Node'] == Node]
 
 def map_fusions(List_unique_fusions, t, threshold):
+	copy_list_unique_fusions = List_unique_fusions.copy()
 	mapped_subsets = []
 	mapped_fusions_dict = []
 	lost_fusions_dict = []
@@ -147,13 +148,30 @@ def map_fusions(List_unique_fusions, t, threshold):
 						for spp in new_spp_details:
 							spp_as_list = []
 							unique_ms = new_spp_details[spp]
-							unique_ms = re.sub(r"[\{\}\[\]']", '', str(unique_ms))
-							unique_ms = unique_ms.replace(' ','')
+							reform_unique_ms = re.sub(r"[\{\}\[\]']", '', str(unique_ms))
+							reform_unique_ms = reform_unique_ms.replace(' ','')
 							spp_as_list.append(spp)
-							entry = {'Unique_Merian_combo':unique_ms, 'spp_with_fusion':spp_as_list}
+							entry = {'Unique_Merian_combo':reform_unique_ms, 'spp_with_fusion':spp_as_list}
 							mapped_subsets.append(entry)
+							if len(unique_ms) >3: # i.e. if there are still parts of the larger fusion to map
+								remaining_merians = sorted(set(unique_ms).difference(matched_ms))
+								remaining_merians = re.sub(r"[\{\}\[\]']", '', str(remaining_merians))
+								remaining_merians = remaining_merians.replace(' ','')
+								reform_spp = []
+								reform_spp.append(spp)
+								if not any(d['Unique_Merian_combo'] == remaining_merians for d in copy_list_unique_fusions):
+									entry = {'Unique_Merian_combo':remaining_merians, 'spp_with_fusion':reform_spp}
+									copy_list_unique_fusions.append(entry)
+									print(entry)
+								else:
+									for d in copy_list_unique_fusions: # find right dict within list
+										current_spp = d['spp_with_fusion']
+										merians = d['Unique_Merian_combo']
+										if merians == remaining_merians:
+											current_plus_new_spp = current_spp.append(spp)
+											d.update((k, current_plus_new_spp) for k, v in d.items() if k == remaining_merians)
 	lost_fusions_df = pd.DataFrame(lost_fusions_dict) # Convert lost fusions to dataframe
-	return(mapped_fusions_dict, lost_fusions_df, t, mapped_subsets)
+	return(mapped_fusions_dict, lost_fusions_df, t, mapped_subsets, copy_list_unique_fusions)
 
 def combinantorial(lst):
     index, pairs = 1, []
@@ -164,9 +182,9 @@ def combinantorial(lst):
     return pairs
 
 
-def account_for_subsets_of_fusions(List_unique_fusions, t, mapped_subsets): # this function adds in fusions which are subsets of larger fusions (e.g. sp1 may have M1,M2,M3 and sp2 may have M1,M2,M4 --> M1,M2 shared event)
-	List_unique_fusions = [x for x in List_unique_fusions if x not in mapped_subsets] # remove fusions involving >2 Merians that have subsets that have already been mapped so that don't remap subsets here
-	for key in List_unique_fusions:
+def account_for_subsets_of_fusions(copy_list_unique_fusions, t, mapped_subsets): # this function adds in fusions which are subsets of larger fusions (e.g. sp1 may have M1,M2,M3 and sp2 may have M1,M2,M4 --> M1,M2 shared event)
+	copy_list_unique_fusions = [x for x in copy_list_unique_fusions if x not in mapped_subsets] # remove fusions involving >2 Merians that have subsets that have already been mapped so that don't remap subsets here
+	for key in copy_list_unique_fusions:
 		Fusion_event = key["Unique_Merian_combo"].split(',')
 		spp_list = key['spp_with_fusion']
 		if len(Fusion_event) > 2:
@@ -185,7 +203,7 @@ def account_for_subsets_of_fusions(List_unique_fusions, t, mapped_subsets): # th
 						tip_list.append(tip)
 					matches = sorted(set(spp_list)&set(tip_list))
 					if len(matches) >= 1: # if at least one matched merian..
-						for entry in List_unique_fusions: # check if any other spp has this fusion as part of a bigger fusion (involving more merians)
+						for entry in copy_list_unique_fusions: # check if any other spp has this fusion as part of a bigger fusion (involving more merians)
 							unique_ms = entry['Unique_Merian_combo'].split(',')
 							matched_ms = set(unique_ms) & set(Subset_fusion_event)
 							if (len(unique_ms) > len(Subset_fusion_event)) & (len(matched_ms) == len(Subset_fusion_event)): # if all Merians in query fusion event are in this fusion, and this fusion has more merians than the query (i.e. the query is a subset of it). Need the greater than or else spp would already be presen in spp list.
@@ -212,8 +230,9 @@ def account_for_subsets_of_fusions(List_unique_fusions, t, mapped_subsets): # th
 											mapped_subsets_counter =+1
 										else:
 											mapped_subsets_counter =+ 1
-			if mapped_subsets_counter == 0: # i.e. no subsets exist at any node, means just have [A,B,C] fusion. So need to add [A,B | A,C | A,B] to dict. But first need to know node where this happened e..g. two species may have [A,B,C]
+			if mapped_subsets_counter == 0:  # i.e. no subsets exist at any node, means just have [A,B,C] fusion. So need to add [A,B | A,C | A,B] to dict. But first need to know node where this happened e..g. two species may have [A,B,C]
 				spp_remaining = list(spp_list)  # need to make a copy of list like so to prevent lists being linked
+				print(Fusion_event, spp_list)
 				for node in t.traverse("preorder"): # so re-traverse the tree..
 					temp_spp_list = list(spp_list) 
 					tip_list = []
@@ -474,8 +493,8 @@ if __name__ == "__main__":
 	print("\t[+] Parsing the tree")
 	t = parse_tree(tree_file, label_status)
 	print("\t[+] Mapping fusions and splits onto the tree")
-	mapped_fusions_dict, lost_fusions_df, t, mapped_subsets = map_fusions(List_unique_fusions, t, threshold)
-	mapped_fusions_dict, t = account_for_subsets_of_fusions(List_unique_fusions, t, mapped_subsets)
+	mapped_fusions_dict, lost_fusions_df, t, mapped_subsets, copy_list_unique_fusions = map_fusions(List_unique_fusions, t, threshold)
+	mapped_fusions_dict, t = account_for_subsets_of_fusions(copy_list_unique_fusions, t, mapped_subsets)
 	mapped_splits_dict, lost_splits_df, t = map_splits(List_unique_splits, t, threshold)
 	if not lost_fusions_df.empty: # if there are any lost fusions in the dataframe
 		print("\t[+] At least one loss of a fusion found. Mapping lost fusions")
@@ -521,5 +540,5 @@ t.render(name, w=183, units="mm", tree_style=ts)
 # List_unique_fusions.sort(key=sort_list_high2low)
 # List_unique_splits = assign_spp_to_splits(unique_merians_splits)
 # t = parse_tree(tree_file, label_status)
-# mapped_fusions_dict, lost_fusions_df, t, mapped_subsets = map_fusions(List_unique_fusions, t, threshold)
+# mapped_fusions_dict, lost_fusions_df, t, mapped_subsets, List_unique_fusions = map_fusions(List_unique_fusions, t, threshold)
 # mapped_fusions_dict, t = account_for_subsets_of_fusions(List_unique_fusions, t, mapped_subsets)
