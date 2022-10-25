@@ -21,7 +21,7 @@ def is_non_zero_file(fpath):
 
 def gather_stats_and_make_table(file_list):
 	max_number_fused_chrs, total_number_fusions, total_number_splits = 0, 0, 0
-	chr_list, d = [], []
+	chr_list, d, spp_list = [], [], []
 	for file_name in file_list:
 		result = is_non_zero_file(file_name)
 		if str(result) == "True":
@@ -29,6 +29,7 @@ def gather_stats_and_make_table(file_list):
 			Spp_name = file_name.split('/')
 			Spp_name = Spp_name[int(input_data.count('/'))] # altered depending on file path to get just file name
 			Spp_name = Spp_name.replace('_chromosome_assignments.tsv','')
+			spp_list.append(Spp_name)
 			chr_list = []
 			for value in file.query_chr:
 					chr_list.append(value)
@@ -47,7 +48,7 @@ def gather_stats_and_make_table(file_list):
 					entry = {'Chrom_ID':query_chr, 'Status':STATUS, 'Assigned_ref_chr':ASSIGNED, 'Spp':Spp_name }
 					d.append(entry)
 	df_combined = pd.DataFrame(d)
-	return(df_combined)
+	return(df_combined, spp_list)
 
 def get_fusions_splits_and_unique_events(df_combined):
 	filtered_fusions = df_combined[df_combined['Status'] == "fusion"]
@@ -75,7 +76,7 @@ def assign_spp_to_fusions(unique_combos_fusions):
 def sort_list_high2low(d): # # Sort list_unique_fusions based on number of merian units per fusion (high to low)
     return len(d['Unique_Merian_combo'])
 
-def assign_spp_to_splits(unique_merians_splits):
+def assign_spp_to_splits(unique_merians_splits, filtered_splits):
 	List_unique_splits = []
 	for i in unique_merians_splits: # for each unique Merian 
 			subset = filtered_splits[filtered_splits['Assigned_ref_chr'] == str(i)]
@@ -85,7 +86,12 @@ def assign_spp_to_splits(unique_merians_splits):
 	return(List_unique_splits)
 
 def parse_tree(tree_file, label_status):
+	tip_list = []
 	t = Tree(tree_file, format=1) # Format_1 means node names are present and read - we have node names thanks to the replacement of branch support values with unique numbers done above :)
+	# First get the list of tips in the tree
+	for node in t.traverse("preorder"):
+		if node.is_leaf():
+			tip_list.append(node.name)	
 	if label_status == 'False':
 		count = -1 # Label each internal node with a number starting from 0
 		for node in t.traverse("preorder"):
@@ -94,7 +100,7 @@ def parse_tree(tree_file, label_status):
 			else:
 				count = count + 1
 				node.name = str('n') + str(count)
-	return(t)
+	return(t, tip_list)
 
 def search(Node, mapped_fusions_dict): # I don't think this function is ever used???
     return [element for element in mapped_fusions_dict if element['Node'] == Node]
@@ -324,27 +330,37 @@ def map_splits(List_unique_splits, t, threshold):
 		x = key["Unique_Merian_split"]
 		Split_event = str(x)
 		spp_list = key['spp_with_split']
-		for node in t.traverse("preorder"):
-			tip_list = []
-			for leaf in node:
-				tip = leaf.name
-				tip_list.append(tip)
-			matches = set(spp_list)&set(tip_list)
-			spp_with_loss = [d for d in tip_list if d not in spp_list]
-			number_matches = len(matches)
-			number_tips = len(tip_list)
-			proportion_match = number_matches / number_tips
-			if proportion_match >= threshold:
-				matched = re.sub(r"[\{\}']", '', str(matches))
-				entry = {'Merians':Split_event, 'Tips':str(matched), 'Node':node.name}
-				mapped_splits_dict.append(entry)
-				if len(spp_with_loss) != 0:
-					loss_entry = {'Merians':Split_event, 'Tips':str(spp_with_loss), 'Node':node.name}
-					lost_splits_dict.append(loss_entry)
-				for element in matches:
-					if element in spp_list:
-						spp_list.remove(element)
+		while (len(spp_list) != 0): # adds one entry per set of matched spp. Means effectively one entry per split fragment as opposed to event
+			for node in t.traverse("preorder"):
+				tip_list = []
+				for leaf in node:
+					tip = leaf.name
+					tip_list.append(tip)
+				matches = set(spp_list)&set(tip_list)
+				spp_with_loss = [d for d in tip_list if d not in spp_list]
+				number_matches = len(matches)
+				number_tips = len(tip_list)
+				proportion_match = number_matches / number_tips
+				if proportion_match >= threshold:
+					matched = re.sub(r"[\{\}']", '', str(matches))
+					entry = {'Merians':Split_event, 'Tips':str(matched), 'Node':node.name}
+					mapped_splits_dict.append(entry)
+					if len(spp_with_loss) != 0:
+						loss_entry = {'Merians':Split_event, 'Tips':str(spp_with_loss), 'Node':node.name}
+						lost_splits_dict.append(loss_entry)
+					for element in matches:
+						if element in spp_list:
+							spp_list.remove(element)
+
+	# Now deal with fact that if more than 2 split fragments, the number of splitting events in 1 - n. So deduct one entry in these cases.
+	# if 1 split fragment, likely arising from a fused chr so one split event has occured, leave as it is
+	unique_mapped_splits = [dict(s) for s in set(frozenset(myObject.items()) for myObject in mapped_splits_dict)]
+	for i in unique_mapped_splits:
+		number_entries = mapped_splits_dict.count(i)
+		if number_entries >1:
+				mapped_splits_dict.remove(i)
 	lost_splits_df = pd.DataFrame(lost_splits_dict) # Convert lost splits to dataframes
+
 	return(mapped_splits_dict, lost_splits_df, t)
 
 def make_list_unique_losses(lost_fusions_df):
@@ -538,16 +554,18 @@ if __name__ == "__main__":
 	print("[+] Running map_fusion_fissions.py with a threshold of " + str(threshold))
 	print("\t[+] Parsing chromosome assignment files")
 	file_list = parse_info(input_data)
+	print("\t[+] Parsing the tree")
+	t, tip_list = parse_tree(tree_file, label_status)
 	print("\t[+] Summarising status of each chromosome")
-	df_combined = gather_stats_and_make_table(file_list)
+	df_combined, spp_list = gather_stats_and_make_table(file_list)
+	if len(spp_list) != len(tip_list):
+		sys.exit("\t ERROR: Not all species in tree in are in the tsv set or vice versa.")
 	print("\t[+] Identifying unique fusion and fission events")
 	filtered_fusions, filtered_splits, unique_combos_fusions, unique_merians_splits = get_fusions_splits_and_unique_events(df_combined)
 	print("\t[+] Assigning species to each fusion and fission event")
 	List_unique_fusions = assign_spp_to_fusions(unique_combos_fusions)
 	List_unique_fusions.sort(key=sort_list_high2low)		
-	List_unique_splits = assign_spp_to_splits(unique_merians_splits)
-	print("\t[+] Parsing the tree")
-	t = parse_tree(tree_file, label_status)
+	List_unique_splits = assign_spp_to_splits(unique_merians_splits, filtered_splits)
 	print("\t[+] Mapping fusions and splits onto the tree")	
 	mapped_fusions_dict, lost_fusions_df, t, mapped_subsets, copy_list_unique_fusions, mapping_status_large_fusions = map_fusions(List_unique_fusions, t, threshold)
 	# Remove spp with fusions composed of >2 merians that have already been mapped 
@@ -567,7 +585,7 @@ if __name__ == "__main__":
 	write_results(output_location, t, df_combined, mapped_fusions_dict, mapped_splits_dict, lost_fusions_df, lost_splits_df, prefix)
 	get_event_stats(mapped_fusions_dict, mapped_splits_dict, df_combined) # Summarise number of fusions & splits that map to each node etc
 #%%
-quit()
+#quit()
 
 # print(t.get_ascii(show_internal=True, attributes = ["name", "Fission1", "Fission2", "Fission3", "Fission4", "Fission5", "Fission6", "Fission7", "Fission8"]))
 #	So far the max number of (sensible) fusions per node is 8
@@ -585,20 +603,22 @@ t.render(name, w=183, units="mm", tree_style=ts)
 #t.show(tree_style=ts)
 
 #%%
-# input_data = '../data/subset_data/'
+# input_data = '../data/'
 # tree_file = 'r2_m17_noCrazies.newick.txt'
 # output_location = 'test'
 # prefix = 'test'
 # threshold = 1
 # label_status = 'True'
 # file_list = parse_info(input_data)
-# df_combined = gather_stats_and_make_table(file_list)
-# filtered_fusions, filtered_splits, unique_combos_fusions, unique_merians_splits = get_fusions_splits_and_unique_events(df_combined)
-# List_unique_fusions = assign_spp_to_fusions(unique_combos_fusions)
-# List_unique_fusions.sort(key=sort_list_high2low)
-# List_unique_splits = assign_spp_to_splits(unique_merians_splits)
-# t = parse_tree(tree_file, label_status)
-# mapped_fusions_dict, lost_fusions_df, t, mapped_subsets, copy_list_unique_fusions, mapping_status_large_fusions = map_fusions(List_unique_fusions, t, threshold)
-# Remove spp with fusions composed of >2 merians that have already been mapped 
-# updated_fusion_list = get_remaining_fusions_to_map(copy_list_unique_fusions, mapped_subsets)
-# mapped_fusions_dict, t = account_for_subsets_of_fusions(updated_fusion_list, mapped_fusions_dict, t, mapping_status_large_fusions)
+# df_combined, spp_list = gather_stats_and_make_table(file_list)
+# t, tip_list = parse_tree(tree_file, label_status)
+# # filtered_fusions, filtered_splits, unique_combos_fusions, unique_merians_splits = get_fusions_splits_and_unique_events(df_combined)
+# # List_unique_fusions = assign_spp_to_fusions(unique_combos_fusions)
+# # List_unique_fusions.sort(key=sort_list_high2low)
+# # List_unique_splits = assign_spp_to_splits(unique_merians_splits, filtered_splits)
+# # mapped_fusions_dict, lost_fusions_df, t, mapped_subsets, copy_list_unique_fusions, mapping_status_large_fusions = map_fusions(List_unique_fusions, t, threshold)
+# # #Remove spp with fusions composed of >2 merians that have already been mapped 
+# # updated_fusion_list = get_remaining_fusions_to_map(copy_list_unique_fusions, mapped_subsets)
+# # mapped_fusions_dict, t = account_for_subsets_of_fusions(updated_fusion_list, mapped_fusions_dict, t, mapping_status_large_fusions)
+# # mapped_splits_dict, lost_splits_df, t = map_splits(List_unique_splits, t, threshold)
+# # List_unique_splits = assign_spp_to_splits(unique_merians_splits, filtered_splits)
