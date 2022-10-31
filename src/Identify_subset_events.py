@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #%%
-import os, sys, glob, argparse
+import os, sys, glob, argparse, re
 import warnings # suppresses warning from importing ete3 (due to codeml)
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 from ete3 import Tree
@@ -19,17 +19,32 @@ def parse_tree(tree_file):
 def parse_table(table_file):
     with open(table_file, 'r') as table:
         Merians2Node_fusion = []
+        definite_subsets = []
         for line in table:
             if not line.startswith("Merian"):
                 cols = line.rstrip("\n").split("\t")
                 merians, tips, node, event = cols[0], cols[1], cols[2], cols[3]
                 merian_node = str(merians + '.' + node)
-                if '(' in merians:
-                    continue # deal with these later - bracketed events are inherently subsets
+                if '(' in merians: #bracketed events are inherently subsets
+                    definite_subsets.append(merian_node)
                 else:   
                     if str(event) == 'fusion':
                         Merians2Node_fusion.append(merian_node)
-    return(Merians2Node_fusion)
+    return(Merians2Node_fusion, definite_subsets)
+
+def reformat_definite_subsets(definite_subsets): # just need to find full fusion amongst the subset
+    reform_definite_subsets = []
+    for i in definite_subsets:
+        Merians = i.split('.')[0]
+        Merians = re.sub(r"[\{\}\[\]\)\(']", '', str(Merians))
+        Merians = Merians.replace(" ","")
+        Merians = Merians.split(",")
+        Merians = sorted(set(Merians))
+        Merians = re.sub(r"[\{\}\[\]\)\(']", '', str(Merians))
+        Merians = Merians.replace(" ","")
+        MerianSet_node_Merians = str(Merians + '.' + i.split('.')[1] + '.' + i.split('.')[0])
+        reform_definite_subsets.append(MerianSet_node_Merians)
+    return(reform_definite_subsets)
 
 def identify_potential_subsets(Merians2Node_fusion): # Identify subsets of larger fusions - potential fusion subsets
     potential_subsets = {}
@@ -46,8 +61,6 @@ def identify_potential_subsets(Merians2Node_fusion): # Identify subsets of large
             to_remove = []
             for entry in copy_list:
                 entry_merians = entry.split('.')[0].split(',')
-                matches = set(entry_merians) & set(Merians)
-                #print(i, entry, matches)
                 if len(entry_merians) == len(Merians):
                     to_remove.append(entry)
             final_list = [ele for ele in copy_list if ele not in to_remove]
@@ -75,7 +88,7 @@ def infer_subsets(t, potential_subsets): # now need to check if phylogenetically
                 inferred_subsets.append(str(subset + '.' + query))
     return(inferred_subsets)
 
-def print_subsets_table(inferred_subsets, subsets_table_file): # make a final dataframe with same format as original mapped dataframe, just with subsets present
+def print_subsets_table(inferred_subsets, reform_definite_subsets, subsets_table_file): # make a final dataframe with same format as original mapped dataframe, just with subsets present
     with open(subsets_table_file, 'w') as subset_table:
         subset_table.write("%s\t%s\t%s\t%s" % ("Merians", "Node", "Event", "Parent_fusion") + "\n")
         for entry in inferred_subsets:
@@ -85,7 +98,13 @@ def print_subsets_table(inferred_subsets, subsets_table_file): # make a final da
             full_merians = inferred_subsets[2]
             full_node = inferred_subsets[3]
             subset_table.write("%s\t%s\t%s\t%s" % (subset_merians, subset_node, full_merians, full_node) + "\n")
-
+        for entry in reform_definite_subsets:
+            inferred_subsets = entry.split('.')
+            subset_merians = inferred_subsets[2]
+            subset_node = inferred_subsets[1]
+            full_merians = inferred_subsets[0]
+            full_node = inferred_subsets[1]
+            subset_table.write("%s\t%s\t%s\t%s" % (subset_merians, subset_node, full_merians, full_node) + "\n")
 #%%
 if __name__ == "__main__":
     SCRIPT = "Identify_subset_events.py"
@@ -102,20 +121,22 @@ if __name__ == "__main__":
     # Run functions
     print("\t[+] Identifying subsets of fusion events.")
     t, tip_list = parse_tree(tree_file)
-    Merians2Node_fusion = parse_table(table_file) # makes list of Merians 2 node
+    Merians2Node_fusion, definite_subsets = parse_table(table_file) # makes list of Merians 2 node
+    reform_definite_subsets = reformat_definite_subsets(definite_subsets) # new line
     potential_subsets = identify_potential_subsets(Merians2Node_fusion)
     inferred_subsets = infer_subsets(t, potential_subsets)
     subsets_table_file = prefix + '_subset_fusions.tsv'
     print("\t[+] Writing subset events to " + prefix + "_subset_fusion.tsv")
-    print_subsets_table(inferred_subsets, subsets_table_file)
+    print_subsets_table(inferred_subsets, reform_definite_subsets, subsets_table_file)
 
 # %%
 # prefix = 'test'
 # tree_file = '/lustre/scratch123/tol/teams/blaxter/projects/lepidoptera_genomics/cw22/Leps_200/Analysis/LFSF/final_analysis/r2_m17.newick.txt'
 # table_file = '/lustre/scratch123/tol/teams/blaxter/projects/lepidoptera_genomics/cw22/Leps_200/Analysis/LFSF/final_analysis/noComplex_281022/mapped_fusions_fissions_noComplex_181022.tsv'
 # t, tip_list = parse_tree(tree_file)
-# Merians2Node_fusion = parse_table(table_file) # makes list of Merians 2 node
+# Merians2Node_fusion, definite_subsets = parse_table(table_file) # makes list of Merians 2 node
+# reform_definite_subsets = reformat_definite_subsets(definite_subsets)
 # potential_subsets = identify_potential_subsets(Merians2Node_fusion)
 # inferred_subsets = infer_subsets(t, potential_subsets)
-# subsets_table_file = prefix + '_summary.tsv'
-# print_subsets_table(inferred_subsets, subsets_table_file)
+# subsets_table_file = prefix + '_subset_fusions.tsv'
+# print_subsets_table(inferred_subsets, reform_definite_subsets, subsets_table_file)
