@@ -119,6 +119,7 @@ def map_fusions(List_unique_fusions, t, threshold):
 			tip_list = []
 			new_spp = 0 # initalise at zero for each node
 			new_spp_details = {}
+			tip_linode.get_leaf_names()
 			for leaf in node:
 				tip = leaf.name
 				tip_list.append(tip)
