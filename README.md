@@ -35,24 +35,17 @@ optional arguments:
  
  ## 2.) Place fusions/fissions in a phylogenetic context
  
- `Map_fusion_fissions.py` takes the output of `fusion_split_finder.py` and infers where fusion/fission occured in a given tree.
+ `map_fusion_fissions.py` takes the output of `fusion_split_finder.py` and infers where fusion/fission occured in a given tree.
  
- `./Map_fusion_fissions.py -i chr_assignments/ -tree spp.treefile -t 1 -o output/ -f test_run`
+ `./map_fusion_fissions.py -i chr_assignments/ -tree spp.treefile -t 1 -o output/ -f test_run`
  
- This will write five files:
- 
-- annotated_fissions_tree.nw  
-- annotated_fusions_tree.nw  
-- lost_fusions.tsv  
-- lost_splits.tsv  
-- mapped_fusions_fissions.tsv  
-- overall_assignments.tsv
+ This will a file called `mapped_fusions_fissions.tsv` which contains a list of each fusion/fission event 
  
  
  ### Full uages:
  
  ```
-usage: Map_fusion_fissions.py [-h] -i INPUT_DATA [-tree TREE] -o OUTPUT [-f PREFIX] [-t THRESHOLD] [-l LABEL]
+usage: map_fusion_fissions.py [-h] -i INPUT_DATA [-tree TREE] -o OUTPUT [-f PREFIX] [-t THRESHOLD] [-l LABEL]
 
 optional arguments:
   -h, --help            show this help message and exit
