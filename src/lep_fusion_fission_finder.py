@@ -33,9 +33,10 @@ def parse_query_table(query_table_file, buscoID2merian):
 
 
 def get_max_merians(chr2pos, pos2buscoID, window_size, warnings_list):
-	max_merian_dict = {}
+	max_merian_dict, window_features = {}, {}
 	for chr, pos_list in chr2pos.items(): # for every chromosome
-		max_merian_list = []
+		window_number = 1 # start at 1
+		max_merian_list, window_features_list = [], []
 		if len(pos_list) >= window_size: # providing there is at least one window's worth of BUSCOs in the chromosome
 			pos_list = sorted(pos_list) # get a sorted list of all the BUSCO positions 
 			# loop through windows
@@ -47,7 +48,11 @@ def get_max_merians(chr2pos, pos2buscoID, window_size, warnings_list):
 						merian_list.append(buscoID2merian[pos2buscoID[str(pos) + "_" + chr]]) # add which Merian they come from to a list
 					except KeyError:
 						continue
+				end_window_pos = pos # last pos in window
+				list_to_add = [window_number, max(set(merian_list), key=merian_list.count), end_window_pos]
+				window_features_list.append(list_to_add) # add window_number, dominant_merian and end_window_pos to list
 				max_merian_list.append(max(set(merian_list), key=merian_list.count)) # find most common Merian in merian_list
+				window_number = window_number + 1
 			# deal with last window
 			if len(pos_list[window_stop:len(pos_list)]) >= 3 and len(pos_list[window_stop:len(pos_list)])/window_size > 0.5: # if the last window has at least three BUSCOs and is at least 50% of the window_size
 				window_list = pos_list[window_stop:len(pos_list)]
@@ -57,74 +62,94 @@ def get_max_merians(chr2pos, pos2buscoID, window_size, warnings_list):
 						merian_list.append(buscoID2merian[pos2buscoID[str(pos) + "_" + chr]])
 					except KeyError:
 						continue
+				end_window_pos = pos # last pos in window
+				list_to_add = [window_number, max(set(merian_list), key=merian_list.count), end_window_pos]
+				window_features_list.append(list_to_add) # add window_number, dominant_merian and end_window_pos to list
 				max_merian_list.append(max(set(merian_list), key=merian_list.count)) # find most common Merian 
 			# store max merian list for each chromosome in dict
 			max_merian_dict[chr] = max_merian_list
+			window_features[chr] = window_features_list
 		else: # if there is NOT one window's worth of BUSCOs in the chromosome, print warning that chromosome will be ignored
 			warnings_list.append("Ignoring " + chr + " as it has fewer BUSCOs (" + str(len(pos_list)) + ") than the window size (" + str(window_size) + ")\n")
-	return max_merian_dict, warnings_list
+	return max_merian_dict, warnings_list, window_features
 
-def get_assignments(max_merian_dict, prefix, expected_number, warnings_list):
-	with open(prefix + "_chromosome_assignments.tsv", "w") as chromosome_assignment_file:
-		chromosome_assignment_file.write(("%s\t%s\t%s\n") % ("query_chr", "status", "assigned_ref_chr"))
-		chromosome_assignment_dict = {} # used later to seperate ancestral chromosomes from splits
-		potential_complex_fusions_dict = {} # used later to check for complex chromosomes
-		observed_merian_count = 0 # will be used to raise a warning if less than expected Merian counts are found
-		observed_merian_list = [] # will be used to store each Merian found
-		# loop through Merian dict
-		fused_chr_list = [] # to keep track of chr assigned as fusions
-		for chr, max_merian_list in max_merian_dict.items():
-			if len(sorted(set(max_merian_list))) > 1: # if the chromosome has windows with > 1 Merian, it's a fusion 
-				chromosome_assignment_file.write(("%s\t%s\t%s\n") % (chr, "fusion", ",".join(sorted(set(max_merian_list))))) # write to output file
-				fused_chr_list.append(chr)
-				merians_present = list(set(max_merian_list))
-				for i in merians_present:
+def get_assignments(max_merian_dict, prefix, expected_number, warnings_list,window_features):
+	with open(prefix + "_fusion_positions.tsv", "w") as fusion_positions_file:
+		with open(prefix + "_chromosome_assignments.tsv", "w") as chromosome_assignment_file:
+			chromosome_assignment_file.write(("%s\t%s\t%s\n") % ("query_chr", "status", "assigned_ref_chr"))
+			chromosome_assignment_dict = {} # used later to seperate ancestral chromosomes from splits
+			potential_complex_fusions_dict = {} # used later to check for complex chromosomes
+			observed_merian_count = 0 # will be used to raise a warning if less than expected Merian counts are found
+			observed_merian_list = [] # will be used to store each Merian found
+			# loop through Merian dict
+			fused_chr_list = [] # to keep track of chr assigned as fusions
+			for chr, max_merian_list in max_merian_dict.items():
+				if len(sorted(set(max_merian_list))) > 1: # if the chromosome has windows with > 1 Merian, it's a fusion 
+					chromosome_assignment_file.write(("%s\t%s\t%s\n") % (chr, "fusion", ",".join(sorted(set(max_merian_list))))) # write to output file
+					fused_chr_list.append(chr)
+					merians_present = list(set(max_merian_list))
+					window_info_list = window_features[chr]
+					first_merian, end_pos = window_info_list[0][1], window_info_list[0][2]
+					start_pos = 0
+					print(first_merian, end_pos)
+					for window in window_info_list:
+						second_merian, second_merian_end = window[1], window[2]
+						if first_merian == second_merian: # no switch, same merian
+							end_pos = second_merian_end # start for next window
+						else:
+							fusion_positions_file.write(("%s\t%s\t%s\t%s\n") % (chr, first_merian, start_pos, end_pos)) # write to outputfile
+							start_pos = end_pos # reset start pos
+							end_pos = second_merian_end # start for next window
+							first_merian = second_merian
+						if window[0] == len(window_info_list): # if last window, write end of chr to file
+							fusion_positions_file.write(("%s\t%s\t%s\t%s\n") % (chr, first_merian, start_pos, second_merian_end)) # write to outputfile
+					for i in merians_present:
+						try:
+							chromosome_assignment_dict[i].append(chr)
+						except KeyError:
+							chromosome_assignment_dict[i] = [chr]
+					for merian in set(max_merian_list):
+						observed_merian_list.append(merian)
+						try:
+							potential_complex_fusions_dict[merian].append(chr) # use this to check for complex chromosomes later
+						except KeyError:
+							potential_complex_fusions_dict[merian] = [chr]
+					observed_merian_count += len(sorted(set(max_merian_list))) # increment observed Merian count by number of Merians in fusion
+				else: # otherwise it's either a split or an ancestral chromosome, so store in dict where key=Merian, value=list of chromosomes
 					try:
-						chromosome_assignment_dict[i].append(chr)
+						chromosome_assignment_dict[max_merian_list[0]].append(chr)
 					except KeyError:
-						chromosome_assignment_dict[i] = [chr]
-				for merian in set(max_merian_list):
-					observed_merian_list.append(merian)
+						chromosome_assignment_dict[max_merian_list[0]] = [chr]
 					try:
-						potential_complex_fusions_dict[merian].append(chr) # use this to check for complex chromosomes later
+						observed_merian_list.append(max_merian_list[0])
 					except KeyError:
-						potential_complex_fusions_dict[merian] = [chr]
-				observed_merian_count += len(sorted(set(max_merian_list))) # increment observed Merian count by number of Merians in fusion
-			else: # otherwise it's either a split or an ancestral chromosome, so store in dict where key=Merian, value=list of chromosomes
-				try:
-					chromosome_assignment_dict[max_merian_list[0]].append(chr)
-				except KeyError:
-					chromosome_assignment_dict[max_merian_list[0]] = [chr]
-				try:
-					observed_merian_list.append(max_merian_list[0])
-				except KeyError:
-					observed_merian_list.append(max_merian_list[0])
-		# loop through list of Merians that are either split or ancestral 
-		for merian, chr_list in chromosome_assignment_dict.items():
-			if len(chr_list) == 1: # if the Merian is only associated with one chromosome, it's ancestral
-				if chr_list[0] not in fused_chr_list: # prevents fused chr being re-called also as ancestral
-					chromosome_assignment_file.write(("%s\t%s\t%s\n") % (chr_list[0], "ancestral", merian)) # write to output file
-					observed_merian_count += 1 
-					try:
-						potential_complex_fusions_dict[merian].append(chr_list[0]) # use this to check for complex chromosomes later
-					except KeyError:
-						potential_complex_fusions_dict[merian] = [chr_list[0]]
-			else: # otherwise its a split
-				for chr in chr_list: # for every query chromosome the split Merian is associated with 
-					if chr not in fused_chr_list: # prevents fused chr being re-called also as splits
-						chromosome_assignment_file.write(("%s\t%s\t%s\n") % (chr, "split", merian)) # write to outputfile
-				observed_merian_count += 1
-		# check if Merian count is as expected
-		if len(sorted(set(observed_merian_list))) != expected_number:
-			warnings_list.append("Number unique Merians found " + str(len(sorted(set(observed_merian_list)))) + " Merians; expected " + str(expected_number) + "Merians\n")
-		else:
-			print("All ", expected_number, " Merians found!")
-		if observed_merian_count != expected_number:
-			warnings_list.append("Genome is composed of  " + str(observed_merian_count) + " of Merians; expected " + str(expected_number) + " blocks\n")
-		complex_chr = []
-		for merian, chr_list in potential_complex_fusions_dict.items():
-			if len(chr_list) != 1: # if a Merian is found on >1 chromosome and those chr aren't clear split fragments:
-				complex_chr.extend(chr_list)
+						observed_merian_list.append(max_merian_list[0])
+			# loop through list of Merians that are either split or ancestral 
+			for merian, chr_list in chromosome_assignment_dict.items():
+				if len(chr_list) == 1: # if the Merian is only associated with one chromosome, it's ancestral
+					if chr_list[0] not in fused_chr_list: # prevents fused chr being re-called also as ancestral
+						chromosome_assignment_file.write(("%s\t%s\t%s\n") % (chr_list[0], "ancestral", merian)) # write to output file
+						observed_merian_count += 1 
+						try:
+							potential_complex_fusions_dict[merian].append(chr_list[0]) # use this to check for complex chromosomes later
+						except KeyError:
+							potential_complex_fusions_dict[merian] = [chr_list[0]]
+				else: # otherwise its a split
+					for chr in chr_list: # for every query chromosome the split Merian is associated with 
+						if chr not in fused_chr_list: # prevents fused chr being re-called also as splits
+							chromosome_assignment_file.write(("%s\t%s\t%s\n") % (chr, "split", merian)) # write to outputfile
+					observed_merian_count += 1
+			# check if Merian count is as expected
+			if len(sorted(set(observed_merian_list))) != expected_number:
+				warnings_list.append("Number unique Merians found " + str(len(sorted(set(observed_merian_list)))) + " Merians; expected " + str(expected_number) + "Merians\n")
+			else:
+				print("All ", expected_number, " Merians found!")
+			if observed_merian_count != expected_number:
+				warnings_list.append("Genome is composed of  " + str(observed_merian_count) + " of Merians; expected " + str(expected_number) + " blocks\n")
+			complex_chr = []
+			for merian, chr_list in potential_complex_fusions_dict.items():
+				if len(chr_list) != 1: # if a Merian is found on >1 chromosome and those chr aren't clear split fragments:
+					complex_chr.extend(chr_list)
 	return warnings_list, potential_complex_fusions_dict
 
 def write_complex_events(prefix, potential_complex_fusions_dict, max_merian_dict):
@@ -150,7 +175,7 @@ def write_warnings(warnings_list):
 
 #%%
 if __name__ == "__main__":
-	SCRIPT = "fusion_split_finder2.py"
+	SCRIPT = "lep_fusion_fission_finder.py"
 	# argument set up
 	parser = argparse.ArgumentParser()
 	parser.add_argument("-r", "--reference_table", type=str, help = "full_table.tsv file for reference species", required=True)
@@ -174,27 +199,11 @@ if __name__ == "__main__":
 	buscoID2merian = parse_reference_table(reference_table_file)
 	chr2pos, pos2buscoID = parse_query_table(query_table_file, buscoID2merian)
 	print("\t[+] Finding most common Merian in each window")
-	max_merian_dict, warnings_list = get_max_merians(chr2pos, pos2buscoID, window_size, warnings_list)
+	max_merian_dict, warnings_list, window_features = get_max_merians(chr2pos, pos2buscoID, window_size, warnings_list)
 	print("\t[+] Writing assignments to " + prefix + "_chromosome_assignments.txt")
-	warnings_list, potential_complex_fusions_dict = get_assignments(max_merian_dict, prefix, expected_number, warnings_list)
+	warnings_list, potential_complex_fusions_dict = get_assignments(max_merian_dict, prefix, expected_number, warnings_list, window_features)
 	print("\t[+] Finding complex events and writing to " + prefix + "_complex_chromosome_assignments.tsv")
 	write_complex_events(prefix, potential_complex_fusions_dict, max_merian_dict)
 	if len(warnings_list) > 0:
 		print("\t[+] Writing " + str(len(warnings_list)) + " warnings to " + prefix + "_warnings.txt")
 		write_warnings(warnings_list)
-
-# %%
-# reference_table_file =  'n2_from_r2_m5_full_table.tsv'
-# query_table_file = 'Pieris_brassicae.tsv'
-# prefix =  'Pieris_test'
-# window_size = 17
-# warnings_list = []
-# # %%
-# buscoID2merian = parse_reference_table(reference_table_file)
-# chr2pos, pos2buscoID = parse_query_table(query_table_file, buscoID2merian)
-# max_merian_dict, warnings_list = get_max_merians(chr2pos, pos2buscoID, window_size, warnings_list)
-# warnings_list, potential_complex_fusions_dict = get_assignments(max_merian_dict, prefix, warnings_list)
-# write_complex_events(prefix, potential_complex_fusions_dict, max_merian_dict)
-# if len(warnings_list) > 0:
-# 	print("\t[+] Writing " + str(len(warnings_list)) + " warnings to " + prefix + "_warnings.txt")
-# 	write_warnings(warnings_list)

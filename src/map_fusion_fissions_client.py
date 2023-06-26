@@ -10,7 +10,7 @@ importlib.reload(merian_tools)
 from merian_tools import *
 #%%
 if __name__ == "__main__":
-	SCRIPT = "map_fusion_splits_client.py"
+	SCRIPT = "map_fusion_fissions_client.py"
 	# argument set up
 	parser = argparse.ArgumentParser()
 	parser.add_argument("-i", "--input_data", type=str, help = "path to lep_fusion_fission_finder output", required=True)

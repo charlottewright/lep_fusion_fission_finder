@@ -19,7 +19,7 @@ This will write two files:
 ### Full usage: 
 
 ```
-usage: fusion_split_finder2.py [-h] -r REFERENCE_TABLE -q QUERY_TABLE [-f PREFIX] [-w WINDOW_SIZE]
+usage: lep_fusion_fission_finder.py [-h] -r REFERENCE_TABLE -q QUERY_TABLE [-f PREFIX] [-w WINDOW_SIZE]
 
 optional arguments:
   -h, --help            show this help message and exit
