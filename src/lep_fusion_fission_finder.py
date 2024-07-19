@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import argparse
-
+from collections import Counter
 #%%
 def parse_reference_table(reference_table_file):
 	with open(reference_table_file, 'r') as reference_table: 
@@ -53,19 +53,19 @@ def get_max_merians(chr2pos, pos2buscoID, window_size, warnings_list):
 				if len(set(merian_list)) == 1:
 					list_to_add = [window_number, merian_list[0], end_window_pos] 
 					last_max_merian = merian_list[0] # update value of dominant merian
+					window_features_list.append(list_to_add) # add window_number, dominant_merian and end_window_pos to list
+					max_merian_list.append(last_max_merian) # find most common Merian in merian_list
 				else:
 					merian_counts = Counter(merian_list)
 					max_count = max(merian_counts.values(), default=0)
 					num_merians_with_max_count = sum(1 for count in merian_counts.values() if count == max_count)
-					print(max_count, num_merians_with_max_count, window_number)
 					if num_merians_with_max_count == 1:
 						list_to_add = [window_number, max(set(merian_list), key=merian_list.count), end_window_pos] # if only one merian element has the max number of counts, use that
 						last_max_merian = max(set(merian_list), key=merian_list.count) # update value of dominant merian
-					else:
-						print('we got here!')
+						window_features_list.append(list_to_add) # add window_number, dominant_merian and end_window_pos to list
+						max_merian_list.append(last_max_merian) # find most common Merian in merian_list
+					elif last_max_merian != None: # i.e as long as there is a last merian to fall back on. If not, there's not enough info to make a judgement call
 						list_to_add = [window_number, last_max_merian, end_window_pos] # else, to be conservative - assign the window to whatever the previous merian element was (NB: assumes previous merian is also in this list of tieing max merians)
-				window_features_list.append(list_to_add) # add window_number, dominant_merian and end_window_pos to list
-				max_merian_list.append(last_max_merian) # find most common Merian in merian_list
 				window_number = window_number + 1
 			# deal with last window
 			if len(pos_list[window_stop:len(pos_list)]) >= 3 and len(pos_list[window_stop:len(pos_list)])/window_size > 0.5: # if the last window has at least three BUSCOs and is at least 50% of the window_size
@@ -84,12 +84,10 @@ def get_max_merians(chr2pos, pos2buscoID, window_size, warnings_list):
 					merian_counts = Counter(merian_list)
 					max_count = max(merian_counts.values(), default=0)
 					num_merians_with_max_count = sum(1 for count in merian_counts.values() if count == max_count)
-					print(max_count, num_merians_with_max_count, window_number)
 					if num_merians_with_max_count == 1:
 						list_to_add = [window_number, max(set(merian_list), key=merian_list.count), end_window_pos] # if only one merian element has the max number of counts, use that
 						last_max_merian = max(set(merian_list), key=merian_list.count) # update value of dominant merian
 					else:
-						print('we got here!')
 						list_to_add = [window_number, last_max_merian, end_window_pos] # else, to be conservative - assign the window to whatever the previous merian element was (NB: assumes previous merian is also in this list of tieing max merians)
 				window_features_list.append(list_to_add) # add window_number, dominant_merian and end_window_pos to list
 				max_merian_list.append(last_max_merian) # find most common Merian 
@@ -118,7 +116,6 @@ def get_assignments(max_merian_dict, prefix, expected_number, warnings_list,wind
 					window_info_list = window_features[chr]
 					first_merian, end_pos = window_info_list[0][1], window_info_list[0][2]
 					start_pos = 0
-					print(first_merian, end_pos)
 					for window in window_info_list:
 						second_merian, second_merian_end = window[1], window[2]
 						if first_merian == second_merian: # no switch, same merian
